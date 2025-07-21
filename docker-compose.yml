@@ -1,0 +1,112 @@
+version: '3.8'
+
+services:
+  # Backend service
+  backend:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.backend
+    container_name: healthtwin-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - SECRET_KEY=${SECRET_KEY:-your-secret-key-here}
+      - DATABASE_URL=sqlite:///./healthtwin.db
+      - ALLOWED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
+      - ENVIRONMENT=development
+    volumes:
+      - ./uploads:/app/uploads
+      - ./healthtwin.db:/app/healthtwin.db
+    networks:
+      - healthtwin-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Frontend service
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: ../docker/Dockerfile.frontend
+    container_name: healthtwin-frontend
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    networks:
+      - healthtwin-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Database service (PostgreSQL for production)
+  # Uncomment for production use
+  # database:
+  #   image: postgres:15-alpine
+  #   container_name: healthtwin-db
+  #   environment:
+  #     POSTGRES_DB: healthtwin
+  #     POSTGRES_USER: healthtwin_user
+  #     POSTGRES_PASSWORD: ${DB_PASSWORD:-secure_password}
+  #   volumes:
+  #     - postgres_data:/var/lib/postgresql/data
+  #     - ./scripts/init.sql:/docker-entrypoint-initdb.d/init.sql
+  #   networks:
+  #     - healthtwin-network
+  #   restart: unless-stopped
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "pg_isready -U healthtwin_user -d healthtwin"]
+  #     interval: 30s
+  #     timeout: 10s
+  #     retries: 3
+
+  # Redis service (for caching and sessions)
+  # Uncomment for production use
+  # redis:
+  #   image: redis:7-alpine
+  #   container_name: healthtwin-redis
+  #   command: redis-server --appendonly yes
+  #   volumes:
+  #     - redis_data:/data
+  #   networks:
+  #     - healthtwin-network
+  #   restart: unless-stopped
+  #   healthcheck:
+  #     test: ["CMD", "redis-cli", "ping"]
+  #     interval: 30s
+  #     timeout: 10s
+  #     retries: 3
+
+  # Nginx reverse proxy (for production)
+  # Uncomment for production use
+  # nginx:
+  #   image: nginx:alpine
+  #   container_name: healthtwin-nginx
+  #   ports:
+  #     - "80:80"
+  #     - "443:443"
+  #   volumes:
+  #     - ./docker/nginx-prod.conf:/etc/nginx/nginx.conf
+  #     - ./ssl:/etc/nginx/ssl
+  #   depends_on:
+  #     - backend
+  #     - frontend
+  #   networks:
+  #     - healthtwin-network
+  #   restart: unless-stopped
+
+networks:
+  healthtwin-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
