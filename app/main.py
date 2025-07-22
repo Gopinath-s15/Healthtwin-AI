@@ -19,6 +19,7 @@ from .auth import (
     ACCESS_TOKEN_EXPIRE_MINUTES
 )
 from .database import DatabaseManager
+from .ocr_service import PrescriptionOCR
 
 app = FastAPI(title="HealthTwin AI API", version="2.0.0", description="Enhanced HealthTwin Backend with AI-powered features")
 
@@ -30,7 +31,7 @@ app.add_middleware(
         "http://127.0.0.1:3000",
         "http://localhost:3001",
         "http://127.0.0.1:3001"
-    ],  # React dev server
+    ],
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE"],
     allow_headers=["*"]
@@ -46,10 +47,61 @@ DB_PATH = "healthtwin.db"
 # Initialize services
 db_manager = DatabaseManager(DB_PATH)
 auth_service = AuthService(DB_PATH)
+ocr_service = PrescriptionOCR()
 
 # Allowed file types for prescription uploads
 ALLOWED_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tiff', '.webp'}
 MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
+
+# Default prescription data for demo purposes
+DEFAULT_PRESCRIPTIONS = [
+    {
+        "id": "default-1",
+        "doctor_name": "Dr. Sarah Johnson",
+        "diagnosis": "Hypertension",
+        "medications": "Lisinopril 10mg, Amlodipine 5mg",
+        "prescription_img": "default-prescription-1.jpg",
+        "created_at": "2024-01-15 10:30:00",
+        "notes": "Monitor blood pressure daily. Follow up in 4 weeks.",
+        "entry_type": "prescription"
+    },
+    {
+        "id": "default-2", 
+        "doctor_name": "Dr. Michael Chen",
+        "diagnosis": "Type 2 Diabetes",
+        "medications": "Metformin 500mg, Glipizide 5mg",
+        "prescription_img": "default-prescription-2.jpg",
+        "created_at": "2024-01-10 14:15:00",
+        "notes": "Check blood sugar levels twice daily. Diet modification recommended.",
+        "entry_type": "prescription"
+    },
+    {
+        "id": "default-3",
+        "doctor_name": "Dr. Emily Rodriguez", 
+        "diagnosis": "Seasonal Allergies",
+        "medications": "Cetirizine 10mg, Fluticasone nasal spray",
+        "prescription_img": "default-prescription-3.jpg",
+        "created_at": "2024-01-05 09:45:00",
+        "notes": "Take antihistamine daily during allergy season. Use nasal spray as needed.",
+        "entry_type": "prescription"
+    }
+]
+
+def get_default_prescriptions():
+    """Get default prescription data for demo purposes"""
+    return DEFAULT_PRESCRIPTIONS.copy()
+
+def has_user_prescriptions(patient_id: str) -> bool:
+    """Check if patient has any uploaded prescriptions"""
+    try:
+        conn = db_manager.get_connection()
+        c = conn.cursor()
+        c.execute("SELECT COUNT(*) FROM timeline WHERE patient_id = ?", (patient_id,))
+        count = c.fetchone()[0]
+        conn.close()
+        return count > 0
+    except:
+        return False
 
 # Legacy database functions (keeping for compatibility)
 def get_db_connection():
@@ -75,6 +127,32 @@ class PatientRegister(BaseModel):
         if not re.match(r'^[\d\s\-\+\(\)]+$', v.strip()):
             raise ValueError('Invalid phone number format')
         return v.strip()
+
+class DoctorTimelineEntry(BaseModel):
+    patient_id: str
+    diagnosis: str
+    medications: str
+    dosage_instructions: Optional[str] = None
+    follow_up_date: Optional[str] = None
+    notes: Optional[str] = None
+
+def validate_file(file: UploadFile) -> None:
+    """Validate uploaded file type and size"""
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="No file selected")
+
+    # Check file extension
+    file_ext = Path(file.filename).suffix.lower()
+    if file_ext not in ALLOWED_EXTENSIONS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"File type not allowed. Allowed types: {', '.join(ALLOWED_EXTENSIONS)}"
+        )
+
+    # Check MIME type
+    mime_type, _ = mimetypes.guess_type(file.filename)
+    if not mime_type or not mime_type.startswith('image/'):
+        raise HTTPException(status_code=400, detail="File must be an image")
 
 # ============================================================================
 # AUTHENTICATION ENDPOINTS
@@ -199,26 +277,8 @@ async def login_doctor(login_data: DoctorLogin):
         "user_id": doctor["id"]
     }
 
-def validate_file(file: UploadFile) -> None:
-    """Validate uploaded file type and size"""
-    if not file.filename:
-        raise HTTPException(status_code=400, detail="No file selected")
-
-    # Check file extension
-    file_ext = Path(file.filename).suffix.lower()
-    if file_ext not in ALLOWED_EXTENSIONS:
-        raise HTTPException(
-            status_code=400,
-            detail=f"File type not allowed. Allowed types: {', '.join(ALLOWED_EXTENSIONS)}"
-        )
-
-    # Check MIME type
-    mime_type, _ = mimetypes.guess_type(file.filename)
-    if not mime_type or not mime_type.startswith('image/'):
-        raise HTTPException(status_code=400, detail="File must be an image")
-
 # ============================================================================
-# LEGACY ENDPOINTS (for backward compatibility)
+# LEGACY ENDPOINTS
 # ============================================================================
 
 @app.post("/register")
@@ -243,13 +303,13 @@ async def register_patient(data: PatientRegister):
 
         return {"healthtwin_id": patient_id, "message": "Patient registered successfully"}
 
-    except sqlite3.Error as e:
-        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Registration failed: {str(e)}")
 
 # ============================================================================
-# ENHANCED AUTHENTICATED ENDPOINTS
+# FILE UPLOAD ENDPOINTS
 # ============================================================================
 
 @app.post("/patient/upload-prescription")
@@ -276,22 +336,51 @@ async def upload_prescription_authenticated(
         with open(file_path, "wb") as f:
             f.write(file_content)
 
-        # Store in database with enhanced fields
-        timeline_id = db_manager.add_timeline_entry(
-            patient_id=current_patient,
-            entry_type="prescription",
-            doctor_name="Self-uploaded",
-            diagnosis="Pending AI analysis",
-            medications="Pending AI extraction",
-            prescription_img=unique_filename,
-            notes="Patient uploaded prescription"
-        )
+        # Process with OCR
+        try:
+            ocr_results = ocr_service.process_prescription(file_path)
+            
+            # Store in database with OCR results
+            timeline_id = db_manager.add_timeline_entry(
+                patient_id=current_patient,
+                entry_type="prescription",
+                doctor_name=ocr_results.get("doctor_name", "Self-uploaded"),
+                diagnosis=ocr_results.get("diagnosis", "Pending AI analysis"),
+                medications=ocr_results.get("medications", "Pending AI extraction"),
+                prescription_img=unique_filename,
+                extracted_text=ocr_results.get("raw_extracted_text", ""),
+                notes=f"""
+Clinic: {ocr_results.get('clinic_name', 'Not found')}
+Doctor: {ocr_results.get('doctor_name', 'Not clearly visible')}
+Patient: {ocr_results.get('patient_name', 'Not clearly visible')}
+Patient Details: {ocr_results.get('patient_details', 'N/A')}
+Prescription Date: {ocr_results.get('prescription_date', 'Not found')}
+Instructions: {ocr_results.get('instructions', 'Follow doctor advice')}
+Follow-up: {ocr_results.get('follow_up', 'As advised')}
+OCR Confidence: {ocr_results.get('confidence', 'Medium')}
+                """.strip(),
+                ai_insights=f"OCR Processing completed with {ocr_results.get('confidence', 'medium')} confidence"
+            )
+            
+        except Exception as ocr_error:
+            print(f"OCR Processing failed: {ocr_error}")
+            # Fallback to basic entry
+            timeline_id = db_manager.add_timeline_entry(
+                patient_id=current_patient,
+                entry_type="prescription",
+                doctor_name="Self-uploaded",
+                diagnosis="OCR processing failed",
+                medications="Manual review required",
+                prescription_img=unique_filename,
+                notes="OCR processing encountered an error. Manual review recommended."
+            )
 
         return {
             "status": "success",
             "timeline_id": timeline_id,
             "file": unique_filename,
-            "message": "Prescription uploaded successfully"
+            "message": "Prescription uploaded and processed successfully",
+            "ocr_results": ocr_results if 'ocr_results' in locals() else None
         }
 
     except HTTPException:
@@ -330,14 +419,15 @@ async def upload_prescription_legacy(
         with open(file_path, "wb") as f:
             f.write(file_content)
 
-        # Store in database
+        # Store in database with better default values
         timeline_id = db_manager.add_timeline_entry(
             patient_id=patient_id,
             entry_type="prescription",
-            doctor_name="Dr. Example",
-            diagnosis="Diagnosis pending analysis",
-            medications="Medications pending analysis",
-            prescription_img=unique_filename
+            doctor_name="Self-uploaded",
+            diagnosis="Pending AI analysis",
+            medications="Pending AI extraction",
+            prescription_img=unique_filename,
+            notes="Patient uploaded prescription - AI analysis in progress"
         )
 
         return {
@@ -356,50 +446,8 @@ async def upload_prescription_legacy(
         raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
 
 # ============================================================================
-# DOCTOR INTERFACE ENDPOINTS
+# DOCTOR ENDPOINTS
 # ============================================================================
-
-@app.get("/doctor/patients")
-async def search_doctor_patients(
-    search: Optional[str] = Query(None, description="Search term for patient name, phone, or ID"),
-    current_doctor: str = Depends(get_current_doctor)
-):
-    """Search patients accessible to the current doctor"""
-    try:
-        patients = db_manager.search_patients_by_doctor(current_doctor, search)
-        return {"patients": patients}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Search failed: {str(e)}")
-
-@app.get("/doctor/patient/{patient_id}/timeline")
-async def get_patient_timeline_for_doctor(
-    patient_id: str,
-    current_doctor: str = Depends(get_current_doctor)
-):
-    """Get patient timeline for doctor (only entries they can access)"""
-    try:
-        if not db_manager.patient_exists(patient_id):
-            raise HTTPException(status_code=404, detail="Patient not found")
-
-        timeline = db_manager.get_patient_timeline(patient_id, current_doctor)
-        patient_info = db_manager.get_patient_info(patient_id)
-
-        return {
-            "patient": patient_info,
-            "timeline": timeline
-        }
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to retrieve timeline: {str(e)}")
-
-class DoctorTimelineEntry(BaseModel):
-    patient_id: str
-    diagnosis: str
-    medications: str
-    dosage_instructions: Optional[str] = None
-    follow_up_date: Optional[str] = None
-    notes: Optional[str] = None
 
 @app.post("/doctor/patient/{patient_id}/timeline")
 async def add_doctor_timeline_entry(
@@ -441,23 +489,38 @@ async def add_doctor_timeline_entry(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to add entry: {str(e)}")
 
+# ============================================================================
+# TIMELINE ENDPOINTS
+# ============================================================================
+
 @app.get("/patient/timeline")
 async def get_patient_own_timeline(current_patient: str = Depends(get_current_patient)):
-    """Get patient's own complete timeline"""
+    """Get patient's own complete timeline with default data if empty"""
     try:
         timeline = db_manager.get_patient_timeline(current_patient)
         patient_info = db_manager.get_patient_info(current_patient)
 
+        # If no user prescriptions exist, return default data
+        if not timeline:
+            default_prescriptions = get_default_prescriptions()
+            return {
+                "patient": patient_info,
+                "timeline": default_prescriptions,
+                "is_default_data": True,
+                "message": "Showing sample prescriptions. Upload your own to get started!"
+            }
+
         return {
             "patient": patient_info,
-            "timeline": timeline
+            "timeline": timeline,
+            "is_default_data": False
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to retrieve timeline: {str(e)}")
 
 @app.get("/timeline/{patient_id}")
 async def get_timeline_legacy(patient_id: str):
-    """Get medical timeline for a patient (legacy endpoint)"""
+    """Get medical timeline for a patient (legacy endpoint) with default data"""
     try:
         # Validate patient exists
         if not db_manager.patient_exists(patient_id):
@@ -465,7 +528,28 @@ async def get_timeline_legacy(patient_id: str):
 
         timeline = db_manager.get_patient_timeline(patient_id)
 
-        # Convert to legacy format
+        # If no user prescriptions exist, return default data
+        if not timeline:
+            default_prescriptions = get_default_prescriptions()
+            # Convert to legacy format
+            legacy_timeline = []
+            for entry in default_prescriptions:
+                legacy_entry = {
+                    "doctor": entry.get("doctor_name", "Unknown"),
+                    "diagnosis": entry.get("diagnosis", ""),
+                    "medications": entry.get("medications", ""),
+                    "img": entry.get("prescription_img", ""),
+                    "created_at": entry.get("created_at", "")
+                }
+                legacy_timeline.append(legacy_entry)
+
+            return {
+                "timeline": legacy_timeline,
+                "is_default_data": True,
+                "message": "Showing sample prescriptions. Upload your own to get started!"
+            }
+
+        # Convert user data to legacy format
         legacy_timeline = []
         for entry in timeline:
             legacy_entry = {
@@ -477,12 +561,28 @@ async def get_timeline_legacy(patient_id: str):
             }
             legacy_timeline.append(legacy_entry)
 
-        return {"timeline": legacy_timeline}
+        return {
+            "timeline": legacy_timeline,
+            "is_default_data": False
+        }
 
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to retrieve timeline: {str(e)}")
+
+@app.get("/patient/timeline/status")
+async def get_timeline_status(current_patient: str = Depends(get_current_patient)):
+    """Get timeline status (whether showing default or user data)"""
+    try:
+        has_user_data = has_user_prescriptions(current_patient)
+        return {
+            "has_user_data": has_user_data,
+            "is_showing_default": not has_user_data,
+            "total_entries": len(db_manager.get_patient_timeline(current_patient)) if has_user_data else len(DEFAULT_PRESCRIPTIONS)
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get status: {str(e)}")
 
 # ============================================================================
 # USER PROFILE ENDPOINTS
