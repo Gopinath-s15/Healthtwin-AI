@@ -1,0 +1,26 @@
+{
+  "ocr_settings": {
+    "confidence_threshold": 0.6,
+    "processing_timeout": 30,
+    "max_file_size_mb": 10
+  },
+  "model_settings": {
+    "trocr_model": "microsoft/trocr-base-handwritten",
+    "paddleocr_languages": [
+      "en",
+      "hi",
+      "ta",
+      "te",
+      "kn",
+      "ml"
+    ],
+    "easyocr_languages": [
+      "en",
+      "hi",
+      "ta",
+      "te",
+      "kn",
+      "ml"
+    ]
+  }
+}
