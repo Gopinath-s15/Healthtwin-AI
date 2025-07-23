@@ -10,21 +10,40 @@ from difflib import SequenceMatcher
 import spacy
 from spacy.matcher import Matcher
 
+# Import enhanced medical NER
+try:
+    from .enhanced_medical_ner import EnhancedMedicalNER
+    ENHANCED_NER_AVAILABLE = True
+    logging.info("Enhanced Medical NER available")
+except ImportError:
+    ENHANCED_NER_AVAILABLE = False
+    logging.warning("Enhanced Medical NER not available")
+
 logger = logging.getLogger(__name__)
 
 class MedicalContextProcessor:
     def __init__(self):
-        """Initialize medical context processor"""
+        """Initialize enhanced medical context processor"""
         self.nlp = None
         self._init_spacy()
-        
-        # Load medical knowledge bases
+
+        # Initialize enhanced medical NER
+        self.enhanced_ner = None
+        if ENHANCED_NER_AVAILABLE:
+            try:
+                self.enhanced_ner = EnhancedMedicalNER()
+                logger.info("Enhanced Medical NER initialized successfully")
+            except Exception as e:
+                logger.warning(f"Failed to initialize Enhanced Medical NER: {e}")
+                self.enhanced_ner = None
+
+        # Load medical knowledge bases (fallback)
         self.medicine_database = self._load_medicine_database()
         self.dosage_patterns = self._load_dosage_patterns()
         self.instruction_patterns = self._load_instruction_patterns()
         self.multilingual_medical_terms = self._load_multilingual_medical_terms()
-        
-        # Initialize matcher for medical entities
+
+        # Initialize matcher for medical entities (fallback)
         self.matcher = None
         if self.nlp:
             self.matcher = Matcher(self.nlp.vocab)
@@ -455,22 +474,65 @@ class MedicalContextProcessor:
             multilingual_info = ocr_results.get('multilingual_info', {})
             handwriting_info = ocr_results.get('handwriting_info', {})
             
-            # Extract medical entities
-            entities = self.extract_medical_entities(main_text, multilingual_info)
+            # Use enhanced NER if available
+            if self.enhanced_ner:
+                logger.info("Using Enhanced Medical NER for entity extraction")
+
+                try:
+                    # Extract structured prescription data
+                    enhanced_structured_data = self.enhanced_ner.extract_structured_prescription_data(main_text)
+                    logger.debug(f"Enhanced structured data: {type(enhanced_structured_data)}")
+
+                    # Extract basic entities for compatibility
+                    entities = self.enhanced_ner.extract_medical_entities(main_text)
+                    logger.debug(f"Enhanced entities: {type(entities)}")
+
+                    # Convert enhanced format to legacy format for compatibility
+                    entities = self._convert_enhanced_to_legacy_format(entities, enhanced_structured_data)
+
+                except Exception as e:
+                    logger.error(f"Enhanced NER processing failed: {e}")
+                    logger.info("Falling back to legacy medical entity extraction")
+                    entities = self.extract_medical_entities(main_text, multilingual_info)
+                    enhanced_structured_data = {}
+
+            else:
+                logger.info("Using legacy medical entity extraction")
+                # Extract medical entities (legacy method)
+                entities = self.extract_medical_entities(main_text, multilingual_info)
             
             # Structure the prescription information
-            structured_prescription = {
-                'medicines': self._structure_medicines(entities['medicines'], entities['dosages']),
-                'instructions': self._structure_instructions(entities['instructions'], entities['frequencies']),
-                'special_notes': entities['special_notes'],
-                'confidence_scores': self._calculate_entity_confidence(entities),
-                'extraction_summary': {
-                    'total_medicines': len(entities['medicines']),
-                    'total_instructions': len(entities['instructions']),
-                    'multilingual_detected': bool(multilingual_info.get('is_multilingual', False)),
-                    'handwriting_detected': bool(handwriting_info.get('handwriting_detected', False))
+            try:
+                logger.debug(f"Structuring medicines: {len(entities.get('medicines', []))} found")
+                medicines_structured = self._structure_medicines(entities['medicines'], entities['dosages'])
+                logger.debug(f"Medicines structured successfully: {len(medicines_structured)}")
+
+                logger.debug(f"Structuring instructions: {len(entities.get('instructions', []))} found")
+                instructions_structured = self._structure_instructions(entities['instructions'], entities['frequencies'])
+                logger.debug(f"Instructions structured successfully: {len(instructions_structured)}")
+
+                logger.debug("Calculating entity confidence...")
+                confidence_scores = self._calculate_entity_confidence(entities)
+                logger.debug("Entity confidence calculated successfully")
+
+                structured_prescription = {
+                    'medicines': medicines_structured,
+                    'instructions': instructions_structured,
+                    'special_notes': entities.get('special_notes', []),
+                    'confidence_scores': confidence_scores,
+                    'extraction_summary': {
+                        'total_medicines': len(entities.get('medicines', [])),
+                        'total_instructions': len(entities.get('instructions', [])),
+                        'multilingual_detected': bool(multilingual_info.get('is_multilingual', False)),
+                        'handwriting_detected': bool(handwriting_info.get('handwriting_detected', False))
+                    }
                 }
-            }
+                logger.debug("Structured prescription created successfully")
+            except Exception as e:
+                logger.error(f"Error structuring prescription: {e}")
+                import traceback
+                logger.error(f"Traceback: {traceback.format_exc()}")
+                raise
             
             return {
                 'success': True,
@@ -488,25 +550,167 @@ class MedicalContextProcessor:
                 'raw_entities': {},
                 'processing_notes': [f"Processing failed: {str(e)}"]
             }
+
+    def _convert_enhanced_to_legacy_format(self, enhanced_entities: Dict[str, Any], structured_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Convert enhanced NER format to legacy format for compatibility"""
+        try:
+            logger.debug(f"Converting enhanced entities: {type(enhanced_entities)}")
+            logger.debug(f"Enhanced entities keys: {enhanced_entities.keys() if isinstance(enhanced_entities, dict) else 'Not a dict'}")
+            # Convert medications
+            medicines = []
+            for i, med in enumerate(enhanced_entities.get('medications', [])):
+                try:
+                    logger.debug(f"Processing medication {i}: {type(med)} - {med}")
+                    # Handle different possible formats
+                    if isinstance(med, dict):
+                        med_text = med.get('text', '') or med.get('drug_name', '') or str(med)
+                        generic_name = med.get('generic_name', '')
+                        confidence = med.get('confidence', 0.0)
+                        category = med.get('category', '')
+                        method = med.get('method', 'enhanced_ner')
+                    else:
+                        med_text = str(med)
+                        generic_name = ''
+                        confidence = 0.5
+                        category = ''
+                        method = 'enhanced_ner'
+
+                    medicines.append({
+                        'name': med_text,
+                        'generic_name': generic_name,
+                        'confidence': confidence,
+                        'category': category,
+                        'method': method
+                    })
+                except Exception as e:
+                    logger.error(f"Error processing medication {i}: {e}")
+                    continue
+
+            # Convert dosages
+            dosages = []
+            for i, dosage in enumerate(enhanced_entities.get('dosages', [])):
+                try:
+                    logger.debug(f"Processing dosage {i}: {type(dosage)} - {dosage}")
+                    if isinstance(dosage, dict):
+                        dosage_text = dosage.get('text', '') or str(dosage)
+                        confidence = dosage.get('confidence', 0.0)
+                        method = dosage.get('method', 'enhanced_ner')
+                    else:
+                        dosage_text = str(dosage)
+                        confidence = 0.5
+                        method = 'enhanced_ner'
+
+                    dosages.append({
+                        'text': dosage_text,
+                        'confidence': confidence,
+                        'method': method
+                    })
+                except Exception as e:
+                    logger.error(f"Error processing dosage {i}: {e}")
+                    continue
+
+            # Convert frequencies
+            frequencies = []
+            for i, freq in enumerate(enhanced_entities.get('frequencies', [])):
+                try:
+                    logger.debug(f"Processing frequency {i}: {type(freq)} - {freq}")
+                    if isinstance(freq, dict):
+                        freq_text = freq.get('text', '') or str(freq)
+                        confidence = freq.get('confidence', 0.0)
+                        method = freq.get('method', 'enhanced_ner')
+                    else:
+                        freq_text = str(freq)
+                        confidence = 0.5
+                        method = 'enhanced_ner'
+
+                    frequencies.append({
+                        'text': freq_text,
+                        'confidence': confidence,
+                        'method': method
+                    })
+                except Exception as e:
+                    logger.error(f"Error processing frequency {i}: {e}")
+                    continue
+
+            # Convert instructions
+            instructions = []
+            for i, instr in enumerate(enhanced_entities.get('instructions', [])):
+                try:
+                    logger.debug(f"Processing instruction {i}: {type(instr)} - {instr}")
+                    if isinstance(instr, dict):
+                        instr_text = instr.get('text', '') or str(instr)
+                        confidence = instr.get('confidence', 0.0)
+                        method = instr.get('method', 'enhanced_ner')
+                    else:
+                        instr_text = str(instr)
+                        confidence = 0.5
+                        method = 'enhanced_ner'
+
+                    instructions.append({
+                        'text': instr_text,
+                        'confidence': confidence,
+                        'method': method
+                    })
+                except Exception as e:
+                    logger.error(f"Error processing instruction {i}: {e}")
+                    continue
+
+            logger.debug("Creating return dictionary...")
+            result = {
+                'medicines': medicines,
+                'dosages': dosages,
+                'frequencies': frequencies,
+                'instructions': instructions,
+                'special_notes': [],
+                'enhanced_data': structured_data  # Include enhanced data for reference
+            }
+            logger.debug(f"Return dictionary created successfully: {len(result)} keys")
+            return result
+
+        except Exception as e:
+            logger.error(f"Failed to convert enhanced format: {e}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            return {
+                'medicines': [],
+                'dosages': [],
+                'frequencies': [],
+                'instructions': [],
+                'special_notes': []
+            }
     
     def _structure_medicines(self, medicines: List[Dict], dosages: List[Dict]) -> List[Dict]:
         """Structure medicine information with dosages"""
         structured = []
         
         for medicine in medicines[:10]:  # Limit to 10 medicines
+            # Handle different medicine formats
+            med_name = medicine.get('name', '') or medicine.get('text', '') or str(medicine)
+            med_confidence = medicine.get('confidence', 0.0) if isinstance(medicine, dict) else 0.5
+            med_category = medicine.get('category', 'unknown') if isinstance(medicine, dict) else 'unknown'
+
             med_info = {
-                'name': medicine['text'],
-                'confidence': medicine['confidence'],
-                'category': medicine.get('category', 'unknown'),
+                'name': med_name,
+                'confidence': med_confidence,
+                'category': med_category,
                 'dosage': 'Not specified',
                 'form': 'Not specified'
             }
             
             # Try to find matching dosage
             for dosage in dosages:
-                if abs(medicines.index(medicine) - dosages.index(dosage)) <= 2:  # Nearby in text
-                    med_info['dosage'] = dosage['text']
-                    break
+                try:
+                    if abs(medicines.index(medicine) - dosages.index(dosage)) <= 2:  # Nearby in text
+                        dosage_text = dosage.get('text', '') if isinstance(dosage, dict) else str(dosage)
+                        if dosage_text:
+                            med_info['dosage'] = dosage_text
+                            break
+                except (ValueError, TypeError):
+                    # Handle cases where index() fails
+                    dosage_text = dosage.get('text', '') if isinstance(dosage, dict) else str(dosage)
+                    if dosage_text:
+                        med_info['dosage'] = dosage_text
+                        break
             
             structured.append(med_info)
         
@@ -539,12 +743,26 @@ class MedicalContextProcessor:
     def _calculate_entity_confidence(self, entities: Dict[str, List]) -> Dict[str, float]:
         """Calculate confidence scores for different entity types"""
         confidence_scores = {}
-        
+
         for category, entity_list in entities.items():
             if entity_list:
-                avg_confidence = sum(e['confidence'] for e in entity_list) / len(entity_list)
-                confidence_scores[category] = avg_confidence
+                try:
+                    # Handle different entity formats
+                    confidences = []
+                    for e in entity_list:
+                        if isinstance(e, dict):
+                            confidence = e.get('confidence', 0.5)
+                        else:
+                            # If entity is not a dict (e.g., string), assign default confidence
+                            confidence = 0.5
+                        confidences.append(confidence)
+
+                    avg_confidence = sum(confidences) / len(confidences) if confidences else 0.0
+                    confidence_scores[category] = avg_confidence
+                except Exception as e:
+                    logger.warning(f"Error calculating confidence for {category}: {e}")
+                    confidence_scores[category] = 0.5  # Default confidence
             else:
                 confidence_scores[category] = 0.0
-        
+
         return confidence_scores

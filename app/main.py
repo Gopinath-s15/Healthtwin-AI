@@ -12,11 +12,13 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 try:
     from app.services.ocr_service import EnhancedPrescriptionOCR
+    from app.services.pdf_processor import PDFProcessor
     from app.ml_pipeline.unified_ocr_pipeline import UnifiedOCRPipeline
     from app.ml_pipeline.medical_context_processor import MedicalContextProcessor
 except ImportError:
     # Fallback for direct execution
     from services.ocr_service import EnhancedPrescriptionOCR
+    from services.pdf_processor import PDFProcessor
     try:
         from ml_pipeline.unified_ocr_pipeline import UnifiedOCRPipeline
         from ml_pipeline.medical_context_processor import MedicalContextProcessor
@@ -45,18 +47,233 @@ app.add_middleware(
 
 # Initialize OCR services
 ocr_service = EnhancedPrescriptionOCR()  # Legacy service for backward compatibility
+pdf_processor = PDFProcessor()  # PDF processing service
 unified_ocr_pipeline = None
 medical_processor = None
 
 # Initialize enhanced services with error handling
 try:
-    logger.info("Initializing enhanced OCR pipeline...")
+    logger.info("🔧 Starting enhanced OCR pipeline initialization...")
     unified_ocr_pipeline = UnifiedOCRPipeline()
+    logger.info("✅ Unified OCR pipeline created successfully")
+
     medical_processor = MedicalContextProcessor()
-    logger.info("Enhanced OCR pipeline initialized successfully")
+    logger.info("✅ Medical context processor created successfully")
+
+    logger.info("🎉 Enhanced OCR pipeline initialized successfully")
+    logger.info(f"📊 Pipeline status: unified_ocr_pipeline = {unified_ocr_pipeline is not None}")
 except Exception as e:
-    logger.warning(f"Failed to initialize enhanced OCR pipeline: {e}")
-    logger.info("Falling back to legacy OCR service")
+    logger.error(f"❌ Failed to initialize enhanced OCR pipeline: {e}")
+    logger.info("🔄 Falling back to legacy OCR service")
+    import traceback
+    traceback.print_exc()
+
+# Helper functions for file processing
+def validate_file_type(file: UploadFile) -> Dict[str, Any]:
+    """
+    Validate uploaded file type and return file info
+
+    Args:
+        file: FastAPI UploadFile object
+
+    Returns:
+        Dict with validation results
+    """
+    # Log file details for debugging
+    logger.info(f"Validating file: {file.filename}, content_type: {file.content_type}")
+
+    # Check if file has content type
+    if not file.content_type:
+        # Try to guess from filename
+        if file.filename:
+            filename_lower = file.filename.lower()
+            if filename_lower.endswith('.pdf'):
+                logger.info("Detected PDF from filename extension")
+                if not pdf_processor.is_pdf_supported():
+                    return {
+                        "valid": False,
+                        "error": "PDF processing not supported - missing dependencies",
+                        "file_type": "pdf"
+                    }
+                return {
+                    "valid": True,
+                    "file_type": "pdf",
+                    "content_type": "application/pdf"
+                }
+            elif any(filename_lower.endswith(ext) for ext in ['.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.webp']):
+                logger.info("Detected image from filename extension")
+                return {
+                    "valid": True,
+                    "file_type": "image",
+                    "content_type": "image/unknown"
+                }
+
+        return {
+            "valid": False,
+            "error": "File type could not be determined",
+            "file_type": None
+        }
+
+    # Check for image files
+    if file.content_type.startswith('image/'):
+        logger.info(f"Validated image file: {file.content_type}")
+        return {
+            "valid": True,
+            "file_type": "image",
+            "content_type": file.content_type
+        }
+
+    # Check for PDF files
+    if file.content_type == 'application/pdf':
+        logger.info(f"Validated PDF file: {file.content_type}")
+        if not pdf_processor.is_pdf_supported():
+            return {
+                "valid": False,
+                "error": "PDF processing not supported - missing dependencies",
+                "file_type": "pdf"
+            }
+        return {
+            "valid": True,
+            "file_type": "pdf",
+            "content_type": file.content_type
+        }
+
+    # Unsupported file type
+    logger.warning(f"Unsupported file type: {file.content_type} for file: {file.filename}")
+    return {
+        "valid": False,
+        "error": f"Unsupported file type: {file.content_type}. Please upload an image (JPG, PNG, etc.) or PDF file",
+        "file_type": None
+    }
+
+def enhance_with_handwriting_specialist(image_path: str, ocr_results: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Enhance OCR results with handwriting specialist when handwriting is detected
+    """
+    try:
+        import sys
+        import os
+        sys.path.append(os.path.join(os.path.dirname(__file__), 'ml_pipeline'))
+        from app.ml_pipeline.handwriting_specialist import HandwritingSpecialist
+        import cv2
+
+        logger.info("Initializing handwriting specialist for enhancement")
+        specialist = HandwritingSpecialist()
+
+        # Load image
+        image = cv2.imread(image_path)
+        if image is None:
+            logger.error(f"Could not load image: {image_path}")
+            return ocr_results
+
+        # Extract handwritten medications
+        specialist_result = specialist.extract_handwritten_text(image)
+
+        if specialist_result.get('success'):
+            specialist_medications = specialist_result.get('medications', [])
+            specialist_instructions = specialist_result.get('instructions', [])
+
+            logger.info(f"Handwriting specialist found {len(specialist_medications)} medications")
+
+            if len(specialist_medications) > 0:
+                # Enhance the medical analysis with handwriting specialist results
+                medical_analysis = ocr_results.get('medical_analysis', {})
+                if medical_analysis.get('success'):
+                    structured_prescription = medical_analysis.get('structured_prescription', {})
+                    existing_medicines = structured_prescription.get('medicines', [])
+                    existing_instructions = structured_prescription.get('instructions', [])
+
+                    # Convert specialist medications to the expected format
+                    enhanced_medicines = []
+                    for med in specialist_medications:
+                        enhanced_med = {
+                            'name': med.get('name', 'Unknown'),
+                            'confidence': med.get('confidence', 0.8),
+                            'category': med.get('category', 'unknown'),
+                            'dosage': med.get('dosage', 'Not specified'),
+                            'frequency': med.get('frequency', 'Not specified'),
+                            'form': med.get('form', 'Not specified'),
+                            'source': 'handwriting_specialist'
+                        }
+                        enhanced_medicines.append(enhanced_med)
+
+                    # Merge with existing medicines (prioritize handwriting specialist)
+                    all_medicines = enhanced_medicines + existing_medicines
+
+                    # Remove duplicates (keep handwriting specialist results)
+                    unique_medicines = {}
+                    for med in all_medicines:
+                        name_key = med['name'].lower()
+                        if name_key not in unique_medicines or med.get('source') == 'handwriting_specialist':
+                            unique_medicines[name_key] = med
+
+                    final_medicines = list(unique_medicines.values())
+
+                    # Update the results
+                    structured_prescription['medicines'] = final_medicines
+                    structured_prescription['instructions'] = list(set(existing_instructions + specialist_instructions))
+
+                    medical_analysis['structured_prescription'] = structured_prescription
+                    ocr_results['medical_analysis'] = medical_analysis
+
+                    # Update extraction method
+                    ocr_results['extraction_method'] = f"{ocr_results.get('extraction_method', 'Enhanced OCR')} + Handwriting Specialist"
+
+                    # Update confidence if handwriting specialist is more confident
+                    if specialist_result.get('confidence', 0) > ocr_results.get('confidence_score', 0):
+                        ocr_results['confidence_score'] = specialist_result.get('confidence', 0.8)
+
+                    logger.info(f"Enhanced results with {len(final_medicines)} total medications")
+
+        return ocr_results
+
+    except Exception as e:
+        logger.error(f"Handwriting specialist enhancement failed: {e}")
+        return ocr_results
+
+def process_single_image_ocr(image_path: str, filename: str, processing_mode: str = "standard") -> Dict[str, Any]:
+    """
+    Process a single image file with OCR
+
+    Args:
+        image_path: Path to image file
+        filename: Original filename
+        processing_mode: OCR processing mode
+
+    Returns:
+        OCR results dictionary
+    """
+    try:
+        logger.info(f"DEBUG: unified_ocr_pipeline = {unified_ocr_pipeline is not None}, processing_mode = {processing_mode}")
+
+        if unified_ocr_pipeline and processing_mode != "legacy":
+            # Use enhanced OCR pipeline
+            logger.info(f"Processing with enhanced OCR: {filename} (mode: {processing_mode})")
+            return unified_ocr_pipeline.process_prescription_comprehensive(image_path, processing_mode)
+        else:
+            # Use legacy OCR service with handwriting enhancement
+            logger.info(f"Processing with legacy OCR + handwriting enhancement: {filename} (unified_ocr_pipeline available: {unified_ocr_pipeline is not None})")
+
+            # Get legacy OCR results
+            legacy_results = ocr_service.process_prescription(image_path)
+
+            # Always try handwriting enhancement for better results
+            try:
+                logger.info("🔍 Attempting handwriting enhancement on legacy results")
+                enhanced_results = enhance_with_handwriting_specialist(image_path, legacy_results)
+                logger.info("✅ Handwriting enhancement completed")
+                return enhanced_results
+            except Exception as e:
+                logger.warning(f"⚠️ Handwriting enhancement failed: {e}")
+                return legacy_results
+    except Exception as e:
+        logger.error(f"OCR processing failed for {filename}: {e}")
+        return {
+            "success": False,
+            "error": f"OCR processing failed: {str(e)}",
+            "confidence": 0.0,
+            "requires_review": True
+        }
 
 @app.get("/")
 async def root():
@@ -108,29 +325,83 @@ async def health_check():
 @app.post("/patient/upload-prescription")
 async def upload_prescription(file: UploadFile = File(...)):
     """
-    Legacy prescription processing endpoint (maintained for backward compatibility)
+    Legacy prescription processing endpoint with PDF support (maintained for backward compatibility)
     """
+    temp_paths = []
     try:
-        # Validate file
-        if not file.content_type or not file.content_type.startswith('image/'):
-            raise HTTPException(status_code=400, detail="Invalid file type")
+        # Validate file type
+        file_validation = validate_file_type(file)
+        if not file_validation["valid"]:
+            raise HTTPException(status_code=400, detail=file_validation["error"])
 
         file_content = await file.read()
-        if len(file_content) > 10 * 1024 * 1024:
-            raise HTTPException(status_code=400, detail="File too large")
+        file_type = file_validation["file_type"]
 
-        # Save temporarily
-        with tempfile.NamedTemporaryFile(delete=False, suffix='.jpg') as temp_file:
-            temp_file.write(file_content)
-            temp_file_path = temp_file.name
+        # Check file size limits
+        max_size = 50 * 1024 * 1024 if file_type == "pdf" else 10 * 1024 * 1024  # 50MB for PDF, 10MB for images
+        if len(file_content) > max_size:
+            raise HTTPException(status_code=400, detail=f"File too large. Maximum size is {max_size // (1024*1024)}MB")
 
-        logger.info(f"Processing with legacy OCR: {file.filename}")
+        # Process based on file type
+        if file_type == "image":
+            # Handle image files (existing logic)
+            with tempfile.NamedTemporaryFile(delete=False, suffix='.jpg') as temp_file:
+                temp_file.write(file_content)
+                temp_paths.append(temp_file.name)
 
-        # Legacy OCR processing
-        ocr_results = ocr_service.process_prescription(temp_file_path)
+            logger.info(f"Processing image with legacy OCR: {file.filename}")
+            ocr_results = process_single_image_ocr(temp_paths[0], file.filename, "legacy")
 
-        # Cleanup
-        os.unlink(temp_file_path)
+        elif file_type == "pdf":
+            # Handle PDF files
+            logger.info(f"Processing PDF with legacy OCR: {file.filename}")
+
+            # Extract images from PDF
+            pdf_result = pdf_processor.process_pdf_for_ocr(file_content, file.filename)
+            if not pdf_result["success"]:
+                raise HTTPException(status_code=400, detail=pdf_result["error"])
+
+            temp_paths = pdf_result["temp_paths"]
+
+            # Process each page and combine results
+            all_results = []
+            combined_text = []
+
+            for i, temp_path in enumerate(temp_paths):
+                page_results = process_single_image_ocr(temp_path, f"{file.filename}_page_{i+1}", "legacy")
+                all_results.append(page_results)
+                if page_results.get("raw_extracted_text"):
+                    combined_text.append(f"Page {i+1}:\n{page_results['raw_extracted_text']}")
+
+            # Combine results from all pages
+            if all_results:
+                # Use the best result or combine them
+                best_result = max(all_results, key=lambda x: x.get("confidence", 0))
+                ocr_results = best_result.copy()
+                ocr_results["raw_extracted_text"] = "\n\n".join(combined_text)
+                ocr_results["pdf_info"] = {
+                    "total_pages": pdf_result["page_count"],
+                    "processed_pages": len(all_results),
+                    "page_results": all_results
+                }
+                ocr_results["extraction_method"] = f"Legacy OCR (PDF - {len(all_results)} pages)"
+            else:
+                ocr_results = {
+                    "success": False,
+                    "error": "No text could be extracted from PDF pages",
+                    "confidence": 0.0,
+                    "requires_review": True
+                }
+
+        else:
+            raise HTTPException(status_code=400, detail="Unsupported file type")
+
+        # Cleanup temporary files
+        for temp_path in temp_paths:
+            try:
+                os.unlink(temp_path)
+            except:
+                pass
 
         # Determine response based on confidence and safety
         confidence_score = ocr_results.get("confidence", 0.0)
@@ -176,11 +447,12 @@ async def upload_prescription(file: UploadFile = File(...)):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Enhanced processing failed: {str(e)}")
-        
-        if 'temp_file_path' in locals():
+        logger.error(f"Processing failed: {str(e)}")
+
+        # Cleanup temporary files on error
+        for temp_path in temp_paths:
             try:
-                os.unlink(temp_file_path)
+                os.unlink(temp_path)
             except:
                 pass
         
@@ -206,16 +478,22 @@ async def upload_prescription_enhanced(
     processing_mode: str = Query("standard", description="Processing mode: fast, standard, or comprehensive")
 ):
     """
-    Enhanced prescription processing with handwriting recognition and multi-language support
+    Enhanced prescription processing with handwriting recognition, multi-language support, and PDF support
     """
+    temp_paths = []
     try:
-        # Validate file
-        if not file.content_type or not file.content_type.startswith('image/'):
-            raise HTTPException(status_code=400, detail="Invalid file type")
+        # Validate file type
+        file_validation = validate_file_type(file)
+        if not file_validation["valid"]:
+            raise HTTPException(status_code=400, detail=file_validation["error"])
 
         file_content = await file.read()
-        if len(file_content) > 10 * 1024 * 1024:
-            raise HTTPException(status_code=400, detail="File too large")
+        file_type = file_validation["file_type"]
+
+        # Check file size limits
+        max_size = 50 * 1024 * 1024 if file_type == "pdf" else 10 * 1024 * 1024  # 50MB for PDF, 10MB for images
+        if len(file_content) > max_size:
+            raise HTTPException(status_code=400, detail=f"File too large. Maximum size is {max_size // (1024*1024)}MB")
 
         # Check if enhanced pipeline is available
         if not unified_ocr_pipeline:
@@ -229,15 +507,117 @@ async def upload_prescription_enhanced(
         if processing_mode not in valid_modes:
             processing_mode = "standard"
 
-        # Save temporarily
-        with tempfile.NamedTemporaryFile(delete=False, suffix='.jpg') as temp_file:
-            temp_file.write(file_content)
-            temp_file_path = temp_file.name
+        # Process based on file type
+        if file_type == "image":
+            # Handle image files (existing logic)
+            with tempfile.NamedTemporaryFile(delete=False, suffix='.jpg') as temp_file:
+                temp_file.write(file_content)
+                temp_paths.append(temp_file.name)
 
-        logger.info(f"Processing with enhanced OCR pipeline: {file.filename} (mode: {processing_mode})")
+            logger.info(f"🔧 Processing image with enhanced OCR: {file.filename} (mode: {processing_mode})")
+            logger.info(f"📁 Temp file path: {temp_paths[0]}")
+            ocr_results = process_single_image_ocr(temp_paths[0], file.filename, processing_mode)
+            logger.info(f"📊 OCR results received: {type(ocr_results)}, keys: {list(ocr_results.keys()) if isinstance(ocr_results, dict) else 'not dict'}")
+            logger.info(f"🎯 About to check for handwriting enhancement...")
 
-        # Enhanced OCR processing
-        ocr_results = unified_ocr_pipeline.process_prescription_comprehensive(temp_file_path, processing_mode)
+            # Apply handwriting specialist enhancement if handwriting is detected
+            try:
+                enhanced_features = ocr_results.get('enhanced_features', {})
+                prescription_type = enhanced_features.get('prescription_type', {})
+                handwriting_info = enhanced_features.get('handwriting_info', {})
+
+                logger.info(f"🔍 Prescription type detection: {prescription_type}")
+                logger.info(f"✍️ Handwriting info: {handwriting_info}")
+
+                # More lenient condition for handwriting detection
+                is_handwritten = (
+                    prescription_type.get('type') == 'handwritten' or
+                    handwriting_info.get('handwriting_detected', False) or
+                    prescription_type.get('confidence', 0) > 0.5 or
+                    handwriting_info.get('handwriting_confidence', 0) > 0.5 or
+                    'handwritten' in str(prescription_type).lower()
+                )
+
+                logger.info(f"🎯 Handwriting detection result: {is_handwritten}")
+
+                if is_handwritten:
+                    logger.info("🚀 Handwriting detected, applying handwriting specialist enhancement")
+                    ocr_results = enhance_with_handwriting_specialist(temp_paths[0], ocr_results)
+                    logger.info("✅ Handwriting specialist enhancement completed")
+                else:
+                    logger.info("❌ No handwriting detected, skipping handwriting specialist enhancement")
+
+            except Exception as e:
+                logger.warning(f"⚠️ Handwriting specialist enhancement failed: {e}")
+                import traceback
+                traceback.print_exc()
+
+        elif file_type == "pdf":
+            # Handle PDF files
+            logger.info(f"Processing PDF with enhanced OCR: {file.filename} (mode: {processing_mode})")
+
+            # Extract images from PDF
+            pdf_result = pdf_processor.process_pdf_for_ocr(file_content, file.filename)
+            if not pdf_result["success"]:
+                raise HTTPException(status_code=400, detail=pdf_result["error"])
+
+            temp_paths = pdf_result["temp_paths"]
+
+            # Process each page with enhanced OCR
+            all_results = []
+            combined_text = []
+            best_confidence = 0.0
+
+            for i, temp_path in enumerate(temp_paths):
+                page_results = process_single_image_ocr(temp_path, f"{file.filename}_page_{i+1}", processing_mode)
+                all_results.append(page_results)
+
+                if page_results.get("raw_extracted_text"):
+                    combined_text.append(f"Page {i+1}:\n{page_results['raw_extracted_text']}")
+
+                # Track best confidence
+                page_confidence = page_results.get("confidence", 0.0)
+                if page_confidence > best_confidence:
+                    best_confidence = page_confidence
+
+            # Combine results from all pages
+            if all_results:
+                # Use the best result as base and enhance with combined data
+                best_result = max(all_results, key=lambda x: x.get("confidence", 0))
+                ocr_results = best_result.copy()
+
+                # Update with combined information
+                ocr_results["raw_extracted_text"] = "\n\n".join(combined_text)
+                ocr_results["confidence"] = best_confidence
+                ocr_results["pdf_info"] = {
+                    "total_pages": pdf_result["page_count"],
+                    "processed_pages": len(all_results),
+                    "page_results": all_results,
+                    "images_metadata": pdf_result["images_metadata"]
+                }
+                ocr_results["extraction_method"] = f"Enhanced OCR Pipeline (PDF - {len(all_results)} pages)"
+
+                # Combine safety flags from all pages
+                all_safety_flags = []
+                for result in all_results:
+                    all_safety_flags.extend(result.get("safety_flags", []))
+                ocr_results["safety_flags"] = list(set(all_safety_flags))  # Remove duplicates
+
+            else:
+                ocr_results = {
+                    "success": False,
+                    "error": "No text could be extracted from PDF pages",
+                    "confidence": 0.0,
+                    "requires_review": True,
+                    "pdf_info": {
+                        "total_pages": pdf_result["page_count"],
+                        "processed_pages": 0,
+                        "page_results": []
+                    }
+                }
+
+        else:
+            raise HTTPException(status_code=400, detail="Unsupported file type")
 
         # Process medical context if available
         medical_context = {}
@@ -248,8 +628,12 @@ async def upload_prescription_enhanced(
                 logger.warning(f"Medical context processing failed: {e}")
                 medical_context = {"error": str(e)}
 
-        # Cleanup
-        os.unlink(temp_file_path)
+        # Cleanup temporary files
+        for temp_path in temp_paths:
+            try:
+                os.unlink(temp_path)
+            except:
+                pass
 
         # Determine response based on confidence and safety
         confidence_score = ocr_results.get("confidence", 0.0)
@@ -326,9 +710,10 @@ async def upload_prescription_enhanced(
     except Exception as e:
         logger.error(f"Enhanced processing failed: {str(e)}")
 
-        if 'temp_file_path' in locals():
+        # Cleanup temporary files on error
+        for temp_path in temp_paths:
             try:
-                os.unlink(temp_file_path)
+                os.unlink(temp_path)
             except:
                 pass
 
@@ -427,10 +812,16 @@ async def get_ocr_capabilities():
             }
         },
         "file_requirements": {
-            "supported_formats": ["JPG", "JPEG", "PNG", "BMP", "TIFF", "WebP"],
-            "max_file_size": "10 MB",
+            "supported_formats": ["JPG", "JPEG", "PNG", "BMP", "TIFF", "WebP", "PDF"],
+            "max_file_size": "10 MB for images, 50 MB for PDFs",
             "recommended_resolution": "300 DPI or higher",
-            "image_quality": "Clear, well-lit images with minimal blur"
+            "image_quality": "Clear, well-lit images with minimal blur",
+            "pdf_support": {
+                "available": pdf_processor.is_pdf_supported(),
+                "max_pages": 10,
+                "description": "Multi-page PDF support with automatic page extraction",
+                "processing": "Each page processed individually and results combined"
+            }
         }
     }
 

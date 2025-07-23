@@ -4,11 +4,21 @@ Supports handwritten text extraction using TrOCR and EasyOCR
 """
 import cv2
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageEnhance, ImageFilter
 import re
 from typing import Dict, List, Tuple, Any, Optional
 import logging
 import warnings
+
+# Enhanced image processing imports
+try:
+    from skimage import exposure, filters, morphology
+    from scipy import ndimage
+    ADVANCED_PROCESSING_AVAILABLE = True
+    logging.info("Advanced image processing libraries available")
+except ImportError:
+    ADVANCED_PROCESSING_AVAILABLE = False
+    logging.warning("Advanced image processing libraries not available - using basic preprocessing")
 
 # Try to import ML dependencies, fall back gracefully if not available
 try:
@@ -31,6 +41,18 @@ except ImportError as e:
 # Suppress warnings for cleaner output
 warnings.filterwarnings("ignore")
 
+# Import handwriting specialist
+try:
+    import sys
+    import os
+    sys.path.append(os.path.dirname(__file__))
+    from handwriting_specialist import HandwritingSpecialist
+    HANDWRITING_SPECIALIST_AVAILABLE = True
+    logging.info("Handwriting specialist available")
+except ImportError as e:
+    HANDWRITING_SPECIALIST_AVAILABLE = False
+    logging.warning(f"Handwriting specialist not available: {e}")
+
 logger = logging.getLogger(__name__)
 
 class HandwritingRecognitionEngine:
@@ -38,10 +60,20 @@ class HandwritingRecognitionEngine:
         """Initialize handwriting recognition models"""
         if TORCH_AVAILABLE:
             self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+        # Initialize handwriting specialist
+        if HANDWRITING_SPECIALIST_AVAILABLE:
+            self.handwriting_specialist = HandwritingSpecialist()
+            logger.info("Handwriting specialist initialized successfully")
+        else:
+            self.handwriting_specialist = None
+            logger.warning("Handwriting specialist not available")
+
+        if TORCH_AVAILABLE:
             logger.info(f"Using device: {self.device}")
         else:
             self.device = "cpu"
-            logger.warning("PyTorch not available - handwriting recognition disabled")
+            logger.warning("PyTorch not available - TrOCR disabled, using Tesseract-based handwriting recognition")
 
         # Initialize TrOCR for handwritten text
         self.trocr_processor = None
@@ -64,16 +96,32 @@ class HandwritingRecognitionEngine:
             return
 
         try:
-            logger.info("Loading TrOCR model for handwriting recognition...")
-            # Use the handwritten text model
-            model_name = "microsoft/trocr-base-handwritten"
-            self.trocr_processor = TrOCRProcessor.from_pretrained(model_name)
-            self.trocr_model = VisionEncoderDecoderModel.from_pretrained(model_name)
-            self.trocr_model.to(self.device)
-            self.trocr_model.eval()
-            logger.info("TrOCR model loaded successfully")
+            logger.info("Loading enhanced TrOCR model for handwriting recognition...")
+
+            # Try to use the latest handwritten text model
+            model_candidates = [
+                "microsoft/trocr-large-handwritten",  # Best quality
+                "microsoft/trocr-base-handwritten",   # Fallback
+            ]
+
+            for model_name in model_candidates:
+                try:
+                    logger.info(f"Attempting to load {model_name}...")
+                    self.trocr_processor = TrOCRProcessor.from_pretrained(model_name)
+                    self.trocr_model = VisionEncoderDecoderModel.from_pretrained(model_name)
+                    self.trocr_model.to(self.device)
+                    self.trocr_model.eval()
+                    logger.info(f"TrOCR model loaded successfully: {model_name}")
+                    break
+                except Exception as e:
+                    logger.warning(f"Failed to load {model_name}: {e}")
+                    continue
+
+            if self.trocr_model is None:
+                logger.error("Failed to load any TrOCR model")
+
         except Exception as e:
-            logger.error(f"Failed to load TrOCR model: {e}")
+            logger.error(f"Failed to initialize TrOCR: {e}")
             self.trocr_processor = None
             self.trocr_model = None
     
@@ -153,13 +201,48 @@ class HandwritingRecognitionEngine:
             corrected = self._correct_skew(gray)
             if corrected is not None:
                 variants.append(corrected)
-            
-            return variants
+
+            # Add advanced preprocessing variants if available
+            if ADVANCED_PROCESSING_AVAILABLE:
+                advanced_variants = self._create_advanced_preprocessing_variants(gray)
+                variants.extend(advanced_variants)
+
+            # Limit to reasonable number of variants for performance
+            return variants[:10]
             
         except Exception as e:
             logger.error(f"Handwriting preprocessing failed: {e}")
             return []
-    
+
+    def _create_advanced_preprocessing_variants(self, gray: np.ndarray) -> List[np.ndarray]:
+        """Create advanced preprocessing variants using scikit-image for better handwriting recognition"""
+        variants = []
+
+        try:
+            # Variant 1: Gamma correction for better contrast
+            gamma_corrected = exposure.adjust_gamma(gray, gamma=1.2)
+            variants.append(gamma_corrected.astype(np.uint8))
+
+            # Variant 2: Unsharp masking for text sharpening
+            blurred = filters.gaussian(gray, sigma=1.0)
+            unsharp = gray + 0.6 * (gray - blurred)
+            unsharp = np.clip(unsharp, 0, 255).astype(np.uint8)
+            variants.append(unsharp)
+
+            # Variant 3: Top-hat transform for text enhancement
+            selem = morphology.disk(2)
+            tophat = morphology.white_tophat(gray, selem)
+            variants.append(tophat)
+
+            # Variant 4: Adaptive histogram equalization
+            equalized = exposure.equalize_adapthist(gray, clip_limit=0.03)
+            variants.append((equalized * 255).astype(np.uint8))
+
+        except Exception as e:
+            logger.warning(f"Failed to create advanced preprocessing variants: {e}")
+
+        return variants
+
     def _correct_skew(self, image: np.ndarray) -> Optional[np.ndarray]:
         """Correct skew in handwritten text"""
         try:
@@ -294,6 +377,22 @@ class HandwritingRecognitionEngine:
             all_results = []
             
             for i, variant in enumerate(image_variants):
+                # Try Handwriting Specialist first (most specialized)
+                if self.handwriting_specialist:
+                    logger.info(f"Using handwriting specialist for variant {i+1}")
+                    specialist_result = self.handwriting_specialist.extract_handwritten_text(variant)
+                    logger.info(f"Handwriting specialist result: success={specialist_result['success']}, medications={len(specialist_result.get('medications', []))}")
+                    if specialist_result['success']:
+                        all_results.append({
+                            'method': f'HandwritingSpecialist_variant_{i+1}',
+                            'text': specialist_result['text'],
+                            'confidence': specialist_result['confidence'],
+                            'medications': specialist_result.get('medications', []),
+                            'instructions': specialist_result.get('instructions', [])
+                        })
+                else:
+                    logger.warning("Handwriting specialist not available for processing")
+
                 # Try TrOCR
                 trocr_text, trocr_conf = self.extract_handwritten_text_trocr(variant)
                 if trocr_text:
@@ -302,7 +401,7 @@ class HandwritingRecognitionEngine:
                         'text': trocr_text,
                         'confidence': trocr_conf
                     })
-                
+
                 # Try EasyOCR
                 easyocr_text, easyocr_conf = self.extract_handwritten_text_easyocr(variant)
                 if easyocr_text:

@@ -12,18 +12,24 @@ function App() {
   const handleFileSelect = (event) => {
     const file = event.target.files[0];
     if (file) {
-      // Validate file type
-      if (!file.type.startsWith('image/')) {
-        setUploadStatus('Please select an image file');
+      // Validate file type - support images and PDFs
+      const isImage = file.type.startsWith('image/');
+      const isPDF = file.type === 'application/pdf';
+
+      if (!isImage && !isPDF) {
+        setUploadStatus('Please select an image file (JPG, PNG, etc.) or PDF file');
         return;
       }
-      
-      // Validate file size (10MB max)
-      if (file.size > 10 * 1024 * 1024) {
-        setUploadStatus('File too large. Maximum size is 10MB');
+
+      // Validate file size - different limits for images vs PDFs
+      const maxSize = isPDF ? 50 * 1024 * 1024 : 10 * 1024 * 1024; // 50MB for PDF, 10MB for images
+      const sizeLabel = isPDF ? '50MB' : '10MB';
+
+      if (file.size > maxSize) {
+        setUploadStatus(`File too large. Maximum size is ${sizeLabel} for ${isPDF ? 'PDF' : 'image'} files`);
         return;
       }
-      
+
       setSelectedFile(file);
       setUploadStatus('');
       setOcrResults(null);
@@ -49,32 +55,54 @@ function App() {
         body: formData,
       });
 
+      if (!response.ok) {
+        // Handle HTTP errors (400, 500, etc.)
+        const errorResult = await response.json().catch(() => ({ detail: 'Unknown error' }));
+        setUploadStatus(`Upload failed: ${errorResult.detail || errorResult.message || 'Unknown error'}`);
+        setOcrResults({
+          success: false,
+          error: errorResult.detail || errorResult.message || 'Upload failed',
+          extraction_method: 'Failed',
+          confidence: 'Low'
+        });
+        return;
+      }
+
       const result = await response.json();
 
       if (result.success) {
         setOcrResults(result);
         setUploadStatus('Prescription processed successfully!');
-        
-        // Add to timeline
-        const newEntry = {
-          id: Date.now(),
-          date: new Date().toISOString().split('T')[0],
-          type: 'prescription',
-          doctor: result.extracted_data.doctor_name,
-          medications: result.extracted_data.medications.split(', ').filter(med => med !== 'Not extracted'),
-          diagnosis: result.extracted_data.diagnosis,
-          confidence: result.confidence,
-          status: 'processed'
-        };
-        
-        setTimeline(prev => [newEntry, ...prev]);
+
+        // Add to timeline (only if extracted_data exists)
+        if (result.extracted_data) {
+          const newEntry = {
+            id: Date.now(),
+            date: new Date().toISOString().split('T')[0],
+            type: 'prescription',
+            doctor: result.extracted_data.doctor_name || 'Unknown',
+            medications: result.extracted_data.medications ?
+              result.extracted_data.medications.split(', ').filter(med => med !== 'Not extracted') : [],
+            diagnosis: result.extracted_data.diagnosis || 'Not specified',
+            confidence: result.confidence || result.confidence_level || 'Unknown',
+            status: 'processed'
+          };
+
+          setTimeline(prev => [newEntry, ...prev]);
+        }
       } else {
-        setUploadStatus(result.message || 'Failed to process prescription');
+        setUploadStatus(result.message || result.error || 'Failed to process prescription');
         setOcrResults(result);
       }
     } catch (error) {
       console.error('Upload error:', error);
       setUploadStatus('Network error. Please check if the backend is running.');
+      setOcrResults({
+        success: false,
+        error: 'Network error occurred',
+        extraction_method: 'Failed',
+        confidence: 'Low'
+      });
     } finally {
       setIsLoading(false);
     }
@@ -114,13 +142,13 @@ function App() {
           <div className="upload-area">
             <input
               type="file"
-              accept="image/*"
+              accept="image/*,.pdf,application/pdf"
               onChange={handleFileSelect}
               className="file-input"
               id="file-upload"
             />
             <label htmlFor="file-upload" className="file-label">
-              {selectedFile ? selectedFile.name : 'Choose prescription image...'}
+              {selectedFile ? selectedFile.name : 'Choose prescription image or PDF...'}
             </label>
             
             <button
@@ -155,29 +183,49 @@ function App() {
                 </p>
               </div>
 
-              <div className="result-card">
-                <h3>👨‍⚕️ Medical Details</h3>
-                <p><strong>Doctor:</strong> {ocrResults.extracted_data.doctor_name}</p>
-                <p><strong>Clinic:</strong> {ocrResults.extracted_data.clinic_name}</p>
-                <p><strong>Date:</strong> {ocrResults.extracted_data.prescription_date}</p>
-              </div>
-
-              <div className="result-card">
-                <h3>💊 Medications</h3>
-                <p>{ocrResults.extracted_data.medications}</p>
-              </div>
-
-              <div className="result-card">
-                <h3>🩺 Diagnosis</h3>
-                <p>{ocrResults.extracted_data.diagnosis}</p>
-              </div>
-
-              {ocrResults.extracted_data.raw_text && (
-                <div className="result-card full-width">
-                  <h3>📝 Raw Extracted Text</h3>
-                  <div className="raw-text">
-                    {ocrResults.extracted_data.raw_text}
+              {ocrResults.extracted_data ? (
+                <>
+                  <div className="result-card">
+                    <h3>👨‍⚕️ Medical Details</h3>
+                    <p><strong>Doctor:</strong> {ocrResults.extracted_data.doctor_name || 'Not found'}</p>
+                    <p><strong>Clinic:</strong> {ocrResults.extracted_data.clinic_name || 'Not found'}</p>
+                    <p><strong>Date:</strong> {ocrResults.extracted_data.prescription_date || 'Not found'}</p>
                   </div>
+
+                  <div className="result-card">
+                    <h3>💊 Medications</h3>
+                    <p>{ocrResults.extracted_data.medications || 'Not found'}</p>
+                  </div>
+
+                  <div className="result-card">
+                    <h3>🩺 Diagnosis</h3>
+                    <p>{ocrResults.extracted_data.diagnosis || 'Not found'}</p>
+                  </div>
+
+                  {ocrResults.extracted_data.raw_text && (
+                    <div className="result-card full-width">
+                      <h3>📝 Raw Extracted Text</h3>
+                      <div className="raw-text">
+                        {ocrResults.extracted_data.raw_text}
+                      </div>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div className="result-card">
+                  <h3>❌ Processing Failed</h3>
+                  <p><strong>Error:</strong> {ocrResults.error || ocrResults.message || 'Unknown error occurred'}</p>
+                  {ocrResults.success === false && (
+                    <p>Please try uploading a different image or PDF file.</p>
+                  )}
+                </div>
+              )}
+
+              {ocrResults.pdf_info && (
+                <div className="result-card">
+                  <h3>📄 PDF Information</h3>
+                  <p><strong>Total Pages:</strong> {ocrResults.pdf_info.total_pages}</p>
+                  <p><strong>Processed Pages:</strong> {ocrResults.pdf_info.processed_pages}</p>
                 </div>
               )}
             </div>

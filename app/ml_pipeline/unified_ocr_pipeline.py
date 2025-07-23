@@ -66,11 +66,11 @@ class UnifiedOCRPipeline:
             'low': 0.3
         }
         
-        # Processing modes
+        # Processing modes (temporarily disable multilingual due to compatibility issues)
         self.processing_modes = {
             'fast': ['printed_text'],
-            'standard': ['printed_text', 'multilingual'],
-            'comprehensive': ['printed_text', 'multilingual', 'handwriting']
+            'standard': ['printed_text', 'handwriting'],
+            'comprehensive': ['printed_text', 'handwriting']
         }
     
     def _init_engines(self):
@@ -298,6 +298,9 @@ class UnifiedOCRPipeline:
                 engines_to_use = self.processing_modes[mode]
             else:
                 engines_to_use = type_detection['recommended_engines']
+
+            logger.info(f"Engines to use: {engines_to_use}")
+            logger.info(f"Available engines: printed_text={bool(self.printed_text_engine)}, multilingual={bool(self.multilingual_engine)}, handwriting={bool(self.handwriting_engine)}")
             
             # Step 3: Process with multiple engines in parallel
             results = {}
@@ -306,14 +309,21 @@ class UnifiedOCRPipeline:
                 future_to_engine = {}
                 
                 if 'printed_text' in engines_to_use and self.printed_text_engine:
+                    logger.info("Starting printed_text engine")
                     future = executor.submit(self.printed_text_engine.process_prescription, image_path)
                     future_to_engine[future] = 'printed_text'
-                
+
                 if 'multilingual' in engines_to_use and self.multilingual_engine:
-                    future = executor.submit(self.multilingual_engine.extract_multilingual_text, image_path)
-                    future_to_engine[future] = 'multilingual'
-                
+                    logger.info("Starting multilingual engine")
+                    try:
+                        future = executor.submit(self.multilingual_engine.extract_multilingual_text, image_path)
+                        future_to_engine[future] = 'multilingual'
+                    except Exception as e:
+                        logger.warning(f"Failed to start multilingual engine: {e}")
+                        # Continue without multilingual engine
+
                 if 'handwriting' in engines_to_use and self.handwriting_engine:
+                    logger.info("Starting handwriting engine")
                     future = executor.submit(self.handwriting_engine.process_handwritten_prescription, image_path)
                     future_to_engine[future] = 'handwriting'
                 
@@ -327,6 +337,17 @@ class UnifiedOCRPipeline:
                     except Exception as e:
                         logger.error(f"Engine {engine_name} failed: {e}")
                         results[engine_name] = {'success': False, 'error': str(e)}
+
+                # Ensure we have at least handwriting results if available
+                if 'handwriting' not in results and 'handwriting' in engines_to_use and self.handwriting_engine:
+                    logger.info("Handwriting engine not in results, running directly...")
+                    try:
+                        handwriting_result = self.handwriting_engine.process_handwritten_prescription(image_path)
+                        results['handwriting'] = handwriting_result
+                        logger.info("Direct handwriting processing completed")
+                    except Exception as e:
+                        logger.error(f"Direct handwriting processing failed: {e}")
+                        results['handwriting'] = {'success': False, 'error': str(e)}
             
             # Step 4: Fuse results intelligently
             fused_result = self._fuse_ocr_results(results, type_detection)
