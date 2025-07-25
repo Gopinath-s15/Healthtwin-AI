@@ -6,6 +6,7 @@ Integrates spaCy, medSpaCy, fuzzy matching, and medical databases for accurate e
 import re
 import json
 import logging
+import sqlite3
 from typing import Dict, List, Tuple, Any, Optional, Set
 from difflib import SequenceMatcher
 import spacy
@@ -31,6 +32,34 @@ except ImportError:
     MEDSPACY_AVAILABLE = False
     logger.warning("medSpaCy not available - using basic medical NER")
 
+# Create a simple DatasetManager class if not available
+class DatasetManager:
+    """Simple dataset manager for medical terms"""
+    def __init__(self):
+        self.medical_db_path = "data/medical_terms.db"
+        self._ensure_database_exists()
+    
+    def _ensure_database_exists(self):
+        """Create database if it doesn't exist"""
+        import os
+        os.makedirs(os.path.dirname(self.medical_db_path), exist_ok=True)
+        
+        conn = sqlite3.connect(self.medical_db_path)
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS medical_terms (
+                id INTEGER PRIMARY KEY,
+                term TEXT UNIQUE,
+                category TEXT,
+                variations TEXT,
+                frequency INTEGER DEFAULT 1
+            )
+        ''')
+        
+        conn.commit()
+        conn.close()
+
 class EnhancedMedicalNER:
     """Enhanced Medical Named Entity Recognition with fuzzy matching and medical databases"""
     
@@ -50,6 +79,10 @@ class EnhancedMedicalNER:
         self.dosage_patterns = self._load_dosage_patterns()
         self.frequency_patterns = self._load_frequency_patterns()
         self.duration_patterns = self._load_duration_patterns()
+        
+        # Load custom medical vocabulary
+        self.dataset_manager = DatasetManager()
+        self.custom_medical_terms = self._load_custom_medical_terms()
         
         # Initialize matchers
         if self.nlp:
@@ -733,3 +766,31 @@ class EnhancedMedicalNER:
             'entity_scores': confidence_scores,
             'requires_review': overall_confidence < 0.7
         }
+
+    def _load_custom_medical_terms(self) -> Dict[str, List[str]]:
+        """Load custom medical terms from dataset"""
+        conn = sqlite3.connect(self.dataset_manager.medical_db_path)
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT term, category, variations 
+            FROM medical_terms 
+            WHERE frequency > 5
+        """)
+        
+        terms_by_category = {}
+        for term, category, variations_json in cursor.fetchall():
+            if category not in terms_by_category:
+                terms_by_category[category] = []
+            
+            terms_by_category[category].append(term)
+            
+            # Add variations
+            if variations_json:
+                variations = json.loads(variations_json)
+                terms_by_category[category].extend(variations)
+        
+        conn.close()
+        return terms_by_category
+
+

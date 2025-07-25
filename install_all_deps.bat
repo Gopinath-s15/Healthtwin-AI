@@ -1,0 +1,23 @@
+@echo off
+echo Installing all required dependencies...
+
+echo Installing basic packages...
+pip install opencv-python pillow numpy
+
+echo Installing OCR packages...
+pip install pytesseract
+
+echo Installing fuzzy matching...
+pip install fuzzywuzzy python-Levenshtein rapidfuzz
+
+echo Installing ML packages...
+pip install torch torchvision transformers
+
+echo Installing additional packages...
+pip install spacy medspacy easyocr paddlepaddle paddleocr
+
+echo Downloading spaCy model...
+python -m spacy download en_core_web_sm
+
+echo All dependencies installed!
+pause

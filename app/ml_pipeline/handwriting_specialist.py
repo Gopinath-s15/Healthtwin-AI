@@ -13,22 +13,91 @@ import logging
 import re
 import sys
 import os
+import sqlite3
+
+# Configure logger first
+logger = logging.getLogger(__name__)
 
 # Import the prescription layout analyzer and medication parser
 sys.path.append(os.path.dirname(__file__))
+
+# Try to import fuzzywuzzy, fall back to rapidfuzz
+try:
+    from fuzzywuzzy import fuzz
+    FUZZYWUZZY_AVAILABLE = True
+except ImportError:
+    try:
+        from rapidfuzz import fuzz
+        FUZZYWUZZY_AVAILABLE = True
+    except ImportError:
+        FUZZYWUZZY_AVAILABLE = False
+        logger.warning("Neither fuzzywuzzy nor rapidfuzz available - fuzzy matching disabled")
+
 try:
     from prescription_layout_analyzer import PrescriptionLayoutAnalyzer
     LAYOUT_ANALYZER_AVAILABLE = True
 except ImportError as e:
     LAYOUT_ANALYZER_AVAILABLE = False
-    logging.warning(f"Layout analyzer not available: {e}")
+    logger.warning(f"Layout analyzer not available: {e}")
 
 try:
     from handwritten_medication_parser import HandwrittenMedicationParser
     MEDICATION_PARSER_AVAILABLE = True
 except ImportError as e:
     MEDICATION_PARSER_AVAILABLE = False
-    logging.warning(f"Medication parser not available: {e}")
+    logger.warning(f"Medication parser not available: {e}")
+
+# Add these imports at the top after existing imports
+try:
+    from .dataset_manager import DatasetManager
+    from .medical_dataset_creator import MedicalDatasetCreator
+    DATASET_INTEGRATION_AVAILABLE = True
+except ImportError:
+    DATASET_INTEGRATION_AVAILABLE = False
+    logger.warning("Dataset integration not available - using fallback")
+
+# Create a simple DatasetManager class if not available
+class DatasetManager:
+    """Simple dataset manager for medical terms"""
+    def __init__(self):
+        self.medical_db_path = "data/medical_terms.db"
+        self._ensure_database_exists()
+    
+    def _ensure_database_exists(self):
+        """Create database if it doesn't exist"""
+        os.makedirs(os.path.dirname(self.medical_db_path), exist_ok=True)
+        
+        conn = sqlite3.connect(self.medical_db_path)
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS medical_terms (
+                id INTEGER PRIMARY KEY,
+                term TEXT UNIQUE,
+                frequency INTEGER DEFAULT 1
+            )
+        ''')
+        
+        # Insert some basic medical terms
+        basic_terms = [
+            ('paracetamol', 100), ('ibuprofen', 90), ('aspirin', 80),
+            ('amoxicillin', 70), ('tablet', 95), ('capsule', 85),
+            ('mg', 100), ('ml', 90), ('twice', 80), ('daily', 85)
+        ]
+        
+        cursor.executemany(
+            'INSERT OR IGNORE INTO medical_terms (term, frequency) VALUES (?, ?)',
+            basic_terms
+        )
+        
+        conn.commit()
+        conn.close()
+
+# Create a simple MedicalDatasetCreator class if not available
+class MedicalDatasetCreator:
+    """Simple medical dataset creator"""
+    def __init__(self, dataset_manager):
+        self.dataset_manager = dataset_manager
 
 logger = logging.getLogger(__name__)
 
@@ -66,6 +135,38 @@ class HandwritingSpecialist:
             r'\d+\s*week[s]?',        # Duration patterns
             r'\d+\s*day[s]?',         # Duration patterns
         ]
+        
+        # Initialize dataset manager
+        self.dataset_manager = DatasetManager()
+        self.medical_dataset = MedicalDatasetCreator(self.dataset_manager)
+        
+        # Load custom medical vocabulary
+        self.medical_vocabulary = self._load_medical_vocabulary()
+        
+        # Enhanced medication patterns with Indian context
+        self.indian_medication_patterns = [
+            r'[A-Za-z]+\s*\d+\s*mg',  # Standard dosage
+            r'[A-Za-z]+\s*gel',       # Topical gels
+            r'[A-Za-z]+\s*cream',     # Topical creams
+            r'tab\s*[A-Za-z]+',      # Tablet prefix
+            r'cap\s*[A-Za-z]+',      # Capsule prefix
+            r'syp\s*[A-Za-z]+',      # Syrup prefix
+            r'inj\s*[A-Za-z]+',      # Injection prefix
+        ]
+        
+        # Initialize dataset integration if available
+        if DATASET_INTEGRATION_AVAILABLE:
+            try:
+                self.dataset_manager = DatasetManager()
+                self.medical_vocabulary = self._load_enhanced_medical_vocabulary()
+                logger.info("Enhanced medical vocabulary loaded")
+            except Exception as e:
+                logger.warning(f"Failed to load enhanced vocabulary: {e}")
+                self.dataset_manager = DatasetManager()  # Fallback to simple version
+                self.medical_vocabulary = self._load_basic_medical_vocabulary()
+        else:
+            self.dataset_manager = DatasetManager()  # Use the simple version from the file
+            self.medical_vocabulary = self._load_basic_medical_vocabulary()
     
     def enhance_for_handwriting(self, image: np.ndarray) -> List[np.ndarray]:
         """
@@ -128,10 +229,7 @@ class HandwritingSpecialist:
     
     def _pil_to_cv2(self, pil_image: Image.Image) -> np.ndarray:
         """Convert PIL image to OpenCV format"""
-        if pil_image.mode == 'RGB':
-            return cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGB2BGR)
-        else:
-            return np.array(pil_image)
+        return cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGB2BGR)
     
     def extract_handwritten_text(self, image: np.ndarray) -> Dict:
         """
@@ -480,3 +578,104 @@ class HandwritingSpecialist:
             merged['raw_text'] = f"{raw1} | {raw2}" if raw1 else raw2
 
         return merged
+    
+    def _load_medical_vocabulary(self) -> Dict[str, float]:
+        """Load medical vocabulary with confidence weights"""
+        vocabulary = {}
+        
+        # Load from database
+        conn = sqlite3.connect(self.dataset_manager.medical_db_path)
+        cursor = conn.cursor()
+        
+        cursor.execute("SELECT term, frequency FROM medical_terms")
+        for term, frequency in cursor.fetchall():
+            # Higher frequency = higher confidence weight
+            vocabulary[term.lower()] = min(frequency / 100.0, 1.0)
+        
+        conn.close()
+        return vocabulary
+    
+    def enhance_with_medical_context(self, text: str) -> str:
+        """Enhance OCR text using medical context"""
+        words = text.split()
+        enhanced_words = []
+        
+        for word in words:
+            word_lower = word.lower()
+            
+            # Check if word is in medical vocabulary
+            if word_lower in self.medical_vocabulary:
+                enhanced_words.append(word)
+                continue
+            
+            # Find closest medical term
+            best_match = self._find_closest_medical_term(word_lower)
+            if best_match and self._calculate_similarity(word_lower, best_match) > 0.8:
+                enhanced_words.append(best_match)
+            else:
+                enhanced_words.append(word)
+        
+        return ' '.join(enhanced_words)
+    
+    def _find_closest_medical_term(self, word: str) -> Optional[str]:
+        """Find the closest medical term using fuzzy matching"""
+        if not FUZZYWUZZY_AVAILABLE:
+            return None
+        
+        best_match = None
+        best_score = 0
+        
+        for term in self.medical_vocabulary.keys():
+            score = fuzz.ratio(word, term)
+            if score > best_score:
+                best_score = score
+                best_match = term
+        
+        return best_match if best_score > 70 else None
+    
+    def _calculate_similarity(self, word1: str, word2: str) -> float:
+        """Calculate similarity between two words"""
+        if not FUZZYWUZZY_AVAILABLE:
+            return 0.0
+        
+        return fuzz.ratio(word1, word2) / 100.0
+    
+    def _load_enhanced_medical_vocabulary(self) -> Dict[str, float]:
+        """Load enhanced medical vocabulary with confidence weights"""
+        vocabulary = {}
+        
+        try:
+            medical_data = self.dataset_manager.get_medical_vocabulary()
+            
+            for term, data in medical_data.items():
+                # Higher frequency = higher confidence weight
+                confidence = min(data['frequency'] / 100.0, 1.0)
+                vocabulary[term.lower()] = confidence
+                
+                # Add variations
+                for variation in data.get('variations', []):
+                    vocabulary[variation.lower()] = confidence * 0.9  # Slightly lower confidence for variations
+            
+            logger.info(f"Loaded {len(vocabulary)} enhanced medical terms")
+            
+        except Exception as e:
+            logger.error(f"Failed to load enhanced vocabulary: {e}")
+            return self._load_basic_medical_vocabulary()
+        
+        return vocabulary
+    
+    def _load_basic_medical_vocabulary(self) -> Dict[str, float]:
+        """Fallback basic medical vocabulary"""
+        return {
+            'paracetamol': 1.0, 'ibuprofen': 0.9, 'aspirin': 0.8,
+            'amoxicillin': 0.7, 'tablet': 0.95, 'capsule': 0.85,
+            'mg': 1.0, 'ml': 0.9, 'twice': 0.8, 'daily': 0.85,
+            'crocin': 0.9, 'combiflam': 0.8, 'dolo': 0.85
+        }
+
+
+
+
+
+
+
