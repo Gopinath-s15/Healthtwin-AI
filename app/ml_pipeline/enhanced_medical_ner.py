@@ -1,7 +1,3 @@
-"""
-Enhanced Medical Named Entity Recognition (NER) System for HealthTwin AI
-Integrates spaCy, medSpaCy, fuzzy matching, and medical databases for accurate entity extraction
-"""
 
 import re
 import json
@@ -14,7 +10,6 @@ from spacy.matcher import Matcher, PhraseMatcher
 
 logger = logging.getLogger(__name__)
 
-# Try to import advanced NLP libraries
 try:
     import rapidfuzz
     from rapidfuzz import fuzz, process
@@ -32,7 +27,6 @@ except ImportError:
     MEDSPACY_AVAILABLE = False
     logger.warning("medSpaCy not available - using basic medical NER")
 
-# Create a simple DatasetManager class if not available
 class DatasetManager:
     """Simple dataset manager for medical terms"""
     def __init__(self):
@@ -69,33 +63,32 @@ class EnhancedMedicalNER:
         self.medspacy_nlp = None
         self.matcher = None
         self.phrase_matcher = None
-        
-        # Initialize NLP models
+   
         self._init_spacy_models()
         
-        # Load medical knowledge bases
+      
         self.drug_database = self._load_comprehensive_drug_database()
         self.medical_patterns = self._load_medical_patterns()
         self.dosage_patterns = self._load_dosage_patterns()
         self.frequency_patterns = self._load_frequency_patterns()
         self.duration_patterns = self._load_duration_patterns()
         
-        # Load custom medical vocabulary
+     
         self.dataset_manager = DatasetManager()
         self.custom_medical_terms = self._load_custom_medical_terms()
         
-        # Initialize matchers
+    
         if self.nlp:
             self._init_matchers()
     
     def _init_spacy_models(self):
         """Initialize spaCy and medSpaCy models"""
         try:
-            # Load standard spaCy model
+        
             self.nlp = spacy.load("en_core_web_sm")
             logger.info("Loaded spaCy English model")
             
-            # Try to load medSpaCy for clinical text
+       
             if MEDSPACY_AVAILABLE:
                 self.medspacy_nlp = medspacy.load()
                 logger.info("Loaded medSpaCy clinical model")
@@ -107,7 +100,7 @@ class EnhancedMedicalNER:
     def _load_comprehensive_drug_database(self) -> Dict[str, Dict[str, Any]]:
         """Load comprehensive drug database with Indian and international medicines"""
         return {
-            # Analgesics/Antipyretics
+    
             'paracetamol': {
                 'variations': ['acetaminophen', 'tylenol', 'crocin', 'dolo', 'calpol', 'metacin', 'pyrigesic'],
                 'category': 'analgesic_antipyretic',
@@ -130,7 +123,7 @@ class EnhancedMedicalNER:
                 'generic_name': 'diclofenac'
             },
             
-            # Antibiotics
+            
             'amoxicillin': {
                 'variations': ['amoxil', 'augmentin', 'clavulin', 'moxikind', 'amoxyclav'],
                 'category': 'antibiotic',
@@ -153,7 +146,7 @@ class EnhancedMedicalNER:
                 'generic_name': 'ciprofloxacin'
             },
             
-            # Antacids/Gastric
+        
             'omeprazole': {
                 'variations': ['prilosec', 'omez', 'omepraz', 'ocid', 'omecip'],
                 'category': 'ppi',
@@ -176,7 +169,7 @@ class EnhancedMedicalNER:
                 'generic_name': 'ranitidine'
             },
             
-            # Vitamins/Supplements
+    
             'vitamin_d3': {
                 'variations': ['cholecalciferol', 'calcirol', 'uprise', 'dvion', 'calcimax'],
                 'category': 'vitamin',
@@ -191,8 +184,7 @@ class EnhancedMedicalNER:
                 'forms': ['tablet', 'injection'],
                 'generic_name': 'cyanocobalamin'
             },
-            
-            # Antidiabetic
+           
             'metformin': {
                 'variations': ['glucophage', 'glycomet', 'obimet', 'formet'],
                 'category': 'antidiabetic',
@@ -208,7 +200,7 @@ class EnhancedMedicalNER:
                 'generic_name': 'glimepiride'
             },
             
-            # Antihypertensive
+
             'amlodipine': {
                 'variations': ['norvasc', 'amlong', 'amlokind', 'stamlo'],
                 'category': 'calcium_channel_blocker',
@@ -224,7 +216,7 @@ class EnhancedMedicalNER:
                 'generic_name': 'atenolol'
             },
             
-            # Respiratory
+    
             'salbutamol': {
                 'variations': ['ventolin', 'asthalin', 'levolin', 'albuterol'],
                 'category': 'bronchodilator',
@@ -253,8 +245,8 @@ class EnhancedMedicalNER:
                 r'\b(\d+)\s*(?:times?|x)\s*(?:a\s*)?(?:day|daily|per\s*day)\b',
                 r'\b(?:once|twice|thrice)\s*(?:a\s*)?(?:day|daily)\b',
                 r'\b(?:morning|evening|night|bedtime|before\s*meals?|after\s*meals?)\b',
-                r'\b(\d+)-(\d+)-(\d+)\b',  # Indian format like 1-0-1
-                r'\bbd|od|tid|qid|sos\b'  # Medical abbreviations
+                r'\b(\d+)-(\d+)-(\d+)\b',  
+                r'\bbd|od|tid|qid|sos\b'  
             ],
             'duration_patterns': [
                 r'\b(?:for\s*)?(\d+)\s*(?:days?|weeks?|months?|years?)\b',
@@ -274,7 +266,7 @@ class EnhancedMedicalNER:
         return [
             r'\b(\d+(?:\.\d+)?)\s*(mg|gm|g|ml|mcg|iu|units?|tab|tablet|cap|capsule)\b',
             r'\b(\d+(?:\.\d+)?)\s*(milligram|gram|milliliter|microgram)\b',
-            r'\b(\d+(?:\.\d+)?)\s*(?:mg|gm)\s*/\s*(\d+(?:\.\d+)?)\s*(?:mg|gm)\b',  # Combination doses
+            r'\b(\d+(?:\.\d+)?)\s*(?:mg|gm)\s*/\s*(\d+(?:\.\d+)?)\s*(?:mg|gm)\b', 
         ]
     
     def _load_frequency_patterns(self) -> List[str]:
@@ -282,8 +274,8 @@ class EnhancedMedicalNER:
         return [
             r'\b(\d+)\s*(?:times?|x)\s*(?:a\s*)?(?:day|daily|per\s*day)\b',
             r'\b(?:once|twice|thrice)\s*(?:a\s*)?(?:day|daily)\b',
-            r'\b(\d+)-(\d+)-(\d+)\b',  # Indian format
-            r'\bbd|od|tid|qid|sos|prn\b',  # Medical abbreviations
+            r'\b(\d+)-(\d+)-(\d+)\b', 
+            r'\bbd|od|tid|qid|sos|prn\b',  
             r'\b(?:every|q)\s*(\d+)\s*(?:hours?|hrs?|h)\b'
         ]
     
@@ -303,18 +295,17 @@ class EnhancedMedicalNER:
         self.matcher = Matcher(self.nlp.vocab)
         self.phrase_matcher = PhraseMatcher(self.nlp.vocab, attr="LOWER")
 
-        # Add drug name patterns
+       
         drug_patterns = []
         for drug, info in self.drug_database.items():
-            # Add main drug name
+            
             drug_patterns.append(self.nlp(drug.replace('_', ' ')))
-            # Add variations
+       
             for variation in info['variations']:
                 drug_patterns.append(self.nlp(variation))
 
         self.phrase_matcher.add("DRUG", drug_patterns)
 
-        # Add dosage patterns
         dosage_patterns = [
             [{"LIKE_NUM": True}, {"LOWER": {"IN": ["mg", "gm", "g", "ml", "mcg", "iu", "units", "unit"]}}],
             [{"LIKE_NUM": True}, {"LOWER": {"IN": ["tablet", "tablets", "tab", "tabs", "capsule", "capsules", "cap", "caps"]}}],
@@ -322,7 +313,6 @@ class EnhancedMedicalNER:
         ]
         self.matcher.add("DOSAGE", dosage_patterns)
 
-        # Add frequency patterns
         frequency_patterns = [
             [{"LOWER": {"IN": ["once", "twice", "thrice"]}}],
             [{"LIKE_NUM": True}, {"LOWER": {"IN": ["times", "time"]}}, {"LOWER": {"IN": ["daily", "day"]}}],
@@ -343,26 +333,24 @@ class EnhancedMedicalNER:
                 'confidence_scores': {}
             }
 
-            # Method 1: spaCy NER
+            
             if self.nlp:
                 spacy_entities = self._extract_with_spacy(text)
                 entities = self._merge_entities(entities, spacy_entities)
 
-            # Method 2: medSpaCy clinical NER
             if self.medspacy_nlp:
                 medspacy_entities = self._extract_with_medspacy(text)
                 entities = self._merge_entities(entities, medspacy_entities)
 
-            # Method 3: Regex-based extraction
             regex_entities = self._extract_with_regex(text)
             entities = self._merge_entities(entities, regex_entities)
 
-            # Method 4: Fuzzy matching for drug names
+      
             if use_fuzzy:
                 fuzzy_entities = self._extract_with_fuzzy_matching(text)
                 entities = self._merge_entities(entities, fuzzy_entities)
 
-            # Post-process and normalize entities
+        
             entities = self._normalize_entities(entities)
 
             return entities
@@ -392,7 +380,6 @@ class EnhancedMedicalNER:
         try:
             doc = self.nlp(text)
 
-            # Use phrase matcher for drugs
             matches = self.phrase_matcher(doc)
             for match_id, start, end in matches:
                 label = self.nlp.vocab.strings[match_id]
@@ -405,7 +392,6 @@ class EnhancedMedicalNER:
                         'method': 'spacy_phrase_matcher'
                     })
 
-            # Use rule-based matcher for other entities
             matches = self.matcher(doc)
             for match_id, start, end in matches:
                 label = self.nlp.vocab.strings[match_id]
@@ -498,7 +484,7 @@ class EnhancedMedicalNER:
             from .enhanced_medical_ner_utils import extract_with_regex
             return extract_with_regex(text, self.medical_patterns)
         except ImportError:
-            # Fallback to basic regex extraction
+            
             return self._basic_regex_extraction(text)
 
     def _basic_regex_extraction(self, text: str) -> Dict[str, Any]:
@@ -514,7 +500,7 @@ class EnhancedMedicalNER:
         }
 
         try:
-            # Basic dosage patterns
+           
             dosage_patterns = [r'\b(\d+(?:\.\d+)?)\s*(mg|gm|g|ml|mcg|iu|units?)\b']
             for pattern in dosage_patterns:
                 matches = re.finditer(pattern, text, re.IGNORECASE)
@@ -525,7 +511,7 @@ class EnhancedMedicalNER:
                         'method': 'basic_regex'
                     })
 
-            # Basic frequency patterns
+           
             freq_patterns = [r'\b(once|twice|thrice|bd|od|tid|qid|sos)\b']
             for pattern in freq_patterns:
                 matches = re.finditer(pattern, text, re.IGNORECASE)
@@ -547,7 +533,7 @@ class EnhancedMedicalNER:
             from .enhanced_medical_ner_utils import extract_with_fuzzy_matching
             return extract_with_fuzzy_matching(text, self.drug_database)
         except ImportError:
-            # Fallback to basic fuzzy matching
+          
             return self._basic_fuzzy_matching(text)
 
     def _basic_fuzzy_matching(self, text: str) -> Dict[str, Any]:
@@ -563,7 +549,7 @@ class EnhancedMedicalNER:
         try:
             text_lower = text.lower()
 
-            # Simple exact matching for drug names
+         
             for drug, info in self.drug_database.items():
                 all_names = [drug.replace('_', ' ')] + info['variations']
 
@@ -588,7 +574,7 @@ class EnhancedMedicalNER:
             from .enhanced_medical_ner_utils import merge_entities
             return merge_entities(base_entities, new_entities)
         except ImportError:
-            # Basic merge fallback
+           
             for entity_type in ['medications', 'dosages', 'frequencies', 'durations', 'instructions']:
                 if entity_type in new_entities:
                     base_entities[entity_type].extend(new_entities[entity_type])
@@ -600,10 +586,10 @@ class EnhancedMedicalNER:
             from .enhanced_medical_ner_utils import normalize_entities
             return normalize_entities(entities)
         except ImportError:
-            # Basic normalization fallback
+            
             for entity_type in ['medications', 'dosages', 'frequencies', 'durations', 'instructions']:
                 if entity_type in entities:
-                    # Simple deduplication by text
+                 
                     seen = set()
                     unique_entities = []
                     for entity in entities[entity_type]:
@@ -617,10 +603,10 @@ class EnhancedMedicalNER:
     def extract_structured_prescription_data(self, text: str) -> Dict[str, Any]:
         """Extract structured prescription data with normalized drug information"""
         try:
-            # Extract basic entities
+          
             entities = self.extract_medical_entities(text)
 
-            # Structure the data for prescription format
+          
             structured_data = {
                 'medications': [],
                 'patient_instructions': [],
@@ -628,13 +614,12 @@ class EnhancedMedicalNER:
                 'confidence_assessment': {}
             }
 
-            # Process medications with dosage and frequency information
             medications = entities.get('medications', [])
             dosages = entities.get('dosages', [])
             frequencies = entities.get('frequencies', [])
             durations = entities.get('durations', [])
 
-            # Group related information
+         
             for med in medications:
                 medication_entry = {
                     'drug_name': med.get('text', ''),
@@ -648,7 +633,6 @@ class EnhancedMedicalNER:
                 }
                 structured_data['medications'].append(medication_entry)
 
-            # Extract patient instructions
             instructions = entities.get('instructions', [])
             for instruction in instructions:
                 structured_data['patient_instructions'].append({
@@ -656,7 +640,6 @@ class EnhancedMedicalNER:
                     'confidence': instruction.get('confidence', 0.0)
                 })
 
-            # Create prescription summary
             structured_data['prescription_summary'] = {
                 'total_medications': len(medications),
                 'medications_with_dosage': len([m for m in structured_data['medications'] if m['dosage']]),
@@ -664,7 +647,7 @@ class EnhancedMedicalNER:
                 'overall_confidence': entities.get('confidence_scores', {})
             }
 
-            # Confidence assessment
+     
             structured_data['confidence_assessment'] = self._assess_extraction_confidence(entities)
 
             return structured_data
@@ -681,7 +664,7 @@ class EnhancedMedicalNER:
     def _find_related_dosage(self, medication: Dict[str, Any], dosages: List[Dict[str, Any]]) -> Optional[str]:
         """Find dosage information related to a specific medication"""
         try:
-            # Handle different medication object formats
+         
             if isinstance(medication, dict):
                 med_text = medication.get('text', '') or medication.get('drug_name', '') or str(medication)
             else:
@@ -697,7 +680,6 @@ class EnhancedMedicalNER:
                     dosage_text = str(dosage)
                     confidence = 0.5
 
-                # If dosage appears near the medication in text, consider it related
                 if dosage_text and confidence > 0.7:
                     return dosage_text
 
@@ -748,11 +730,10 @@ class EnhancedMedicalNER:
         """Assess overall confidence of the extraction"""
         confidence_scores = entities.get('confidence_scores', {})
 
-        # Calculate overall confidence
+       
         scores = [score for score in confidence_scores.values() if score > 0]
         overall_confidence = sum(scores) / len(scores) if scores else 0.0
 
-        # Determine confidence level
         if overall_confidence >= 0.8:
             confidence_level = 'high'
         elif overall_confidence >= 0.6:
@@ -785,7 +766,7 @@ class EnhancedMedicalNER:
             
             terms_by_category[category].append(term)
             
-            # Add variations
+           
             if variations_json:
                 variations = json.loads(variations_json)
                 terms_by_category[category].extend(variations)
