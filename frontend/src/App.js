@@ -972,12 +972,6 @@ function App() {
                 {renderExtractedContent(uploadResult)}
                 {renderMedicalAnalysis(uploadResult)}
                 {renderQualityMetrics(uploadResult)}
-
-                {uploadResult.enhancement_note && (
-                  <div className="enhancement-note">
-                    <strong>💡 Enhancement Available:</strong> {uploadResult.enhancement_note}
-                  </div>
-                )}
               </div>
             ) : (
               <div className="result-error">
@@ -1170,12 +1164,6 @@ function App() {
                     {renderMedicalAnalysis(uploadResult)}
                     {renderQualityMetrics(uploadResult)}
                     {renderDigitalizationSection(uploadResult)}
-
-                    {uploadResult.enhancement_note && (
-                      <div className="enhancement-note">
-                        <strong>Enhancement Available:</strong> {uploadResult.enhancement_note}
-                      </div>
-                    )}
                   </div>
                 ) : (
                   <div className="result-error">

@@ -48,10 +48,52 @@
 body {
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
   background: var(--gradient-hero);
+  background-size: 400% 400%;
+  animation: gradientShift 15s ease infinite, backgroundPulse 8s ease-in-out infinite;
   min-height: 100vh;
   color: var(--text-primary);
   line-height: 1.6;
   overflow-x: hidden;
+  position: relative;
+}
+
+/* Enhanced Background with Multiple Layers */
+body::before {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background:
+    radial-gradient(circle at 20% 20%, rgba(0, 212, 255, 0.15) 0%, transparent 50%),
+    radial-gradient(circle at 80% 80%, rgba(0, 255, 204, 0.12) 0%, transparent 50%),
+    radial-gradient(circle at 40% 60%, rgba(75, 70, 229, 0.08) 0%, transparent 50%),
+    radial-gradient(circle at 60% 40%, rgba(6, 182, 212, 0.1) 0%, transparent 50%);
+  animation: backgroundFloat 20s ease-in-out infinite;
+  z-index: -4;
+  pointer-events: none;
+}
+
+/* Pulse Wave Animation */
+body::after {
+  content: '';
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  width: 200px;
+  height: 200px;
+  background: radial-gradient(
+    circle,
+    rgba(0, 212, 255, 0.1) 0%,
+    rgba(0, 212, 255, 0.05) 30%,
+    transparent 70%
+  );
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  animation: pulseWave 6s ease-in-out infinite;
+  z-index: -5;
+  pointer-events: none;
 }
 
 .App {
@@ -109,6 +151,73 @@ body {
   100% { transform: translate(20px, 20px); }
 }
 
+/* Enhanced Background Animation Keyframes */
+@keyframes gradientShift {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+@keyframes backgroundPulse {
+  0%, 100% {
+    filter: brightness(1) saturate(1);
+  }
+  50% {
+    filter: brightness(1.1) saturate(1.2);
+  }
+}
+
+@keyframes pulseWave {
+  0%, 100% {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 0.1;
+  }
+  25% {
+    transform: translate(-50%, -50%) scale(1.5);
+    opacity: 0.15;
+  }
+  50% {
+    transform: translate(-50%, -50%) scale(2);
+    opacity: 0.08;
+  }
+  75% {
+    transform: translate(-50%, -50%) scale(2.5);
+    opacity: 0.05;
+  }
+}
+
+/* Button Pulse Animation */
+@keyframes buttonPulse {
+  0%, 100% {
+    box-shadow: var(--shadow-medium), 0 0 0 0 rgba(0, 212, 255, 0.4);
+  }
+  50% {
+    box-shadow: var(--shadow-medium), 0 0 0 10px rgba(0, 212, 255, 0);
+  }
+}
+
+/* Theme Button Animations */
+@keyframes themeButtonFloat {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-3px);
+  }
+}
+
+@keyframes ripple {
+  0% {
+    transform: scale(0);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(2);
+    opacity: 0;
+  }
+}
+
+/* Enhanced Medical Background Animation System */
 .medical-icons {
   position: fixed;
   top: 0;
@@ -117,29 +226,571 @@ body {
   height: 100%;
   pointer-events: none;
   z-index: -1;
+  overflow: hidden;
 }
 
+/* Floating Medical Icons with Enhanced Animations */
 .medical-icon {
   position: absolute;
   font-size: 2rem;
-  opacity: 0.1;
-  animation: floatIcon 15s ease-in-out infinite;
+  opacity: 0.15;
+  color: var(--primary-health);
+  filter: drop-shadow(0 0 15px rgba(0, 212, 255, 0.4));
+  animation: medicalFloat 20s ease-in-out infinite;
+  transition: all 0.3s ease;
 }
 
-.medical-icon:nth-child(1) { top: 10%; left: 10%; animation-delay: 0s; }
-.medical-icon:nth-child(2) { top: 20%; right: 15%; animation-delay: 3s; }
-.medical-icon:nth-child(3) { bottom: 30%; left: 20%; animation-delay: 6s; }
-.medical-icon:nth-child(4) { bottom: 15%; right: 25%; animation-delay: 9s; }
-.medical-icon:nth-child(5) { top: 50%; left: 5%; animation-delay: 12s; }
+.medical-icon:nth-child(1) {
+  top: 10%;
+  left: 10%;
+  animation: medicalFloat 25s ease-in-out infinite, pulse 4s ease-in-out infinite;
+  animation-delay: 0s, 0s;
+}
 
-@keyframes floatIcon {
+.medical-icon:nth-child(2) {
+  top: 20%;
+  right: 15%;
+  animation: medicalFloat 30s ease-in-out infinite, pulse 4s ease-in-out infinite;
+  animation-delay: 5s, 1s;
+}
+
+.medical-icon:nth-child(3) {
+  bottom: 30%;
+  left: 20%;
+  animation: medicalFloat 35s ease-in-out infinite, pulse 4s ease-in-out infinite;
+  animation-delay: 10s, 2s;
+}
+
+.medical-icon:nth-child(4) {
+  bottom: 15%;
+  right: 25%;
+  animation: medicalFloat 28s ease-in-out infinite, pulse 4s ease-in-out infinite;
+  animation-delay: 15s, 3s;
+}
+
+.medical-icon:nth-child(5) {
+  top: 50%;
+  left: 5%;
+  animation: medicalFloat 32s ease-in-out infinite, pulse 4s ease-in-out infinite;
+  animation-delay: 20s, 0.5s;
+}
+
+/* Enhanced Medical Float Animation */
+@keyframes medicalFloat {
   0%, 100% {
-    transform: translateY(0px) rotate(0deg);
-    opacity: 0.1;
+    transform: translate(0, 0) rotate(0deg) scale(1);
+    opacity: 0.15;
+  }
+  25% {
+    transform: translate(30px, -40px) rotate(90deg) scale(1.1);
+    opacity: 0.25;
   }
   50% {
-    transform: translateY(-20px) rotate(180deg);
+    transform: translate(-20px, -60px) rotate(180deg) scale(0.9);
+    opacity: 0.3;
+  }
+  75% {
+    transform: translate(-40px, 20px) rotate(270deg) scale(1.05);
     opacity: 0.2;
+  }
+}
+
+/* Pulse Animation for Medical Icons */
+@keyframes pulse {
+  0%, 100% {
+    filter: drop-shadow(0 0 15px rgba(0, 212, 255, 0.4));
+  }
+  50% {
+    filter: drop-shadow(0 0 25px rgba(0, 212, 255, 0.7));
+  }
+}
+
+/* DNA Helix Animation Background */
+.dna-helix {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: -2;
+  overflow: hidden;
+}
+
+.dna-strand {
+  position: absolute;
+  width: 4px;
+  height: 100%;
+  background: linear-gradient(
+    to bottom,
+    transparent 0%,
+    rgba(0, 212, 255, 0.1) 25%,
+    rgba(0, 255, 204, 0.15) 50%,
+    rgba(0, 212, 255, 0.1) 75%,
+    transparent 100%
+  );
+  animation: dnaRotate 15s linear infinite;
+}
+
+.dna-strand:nth-child(1) {
+  left: 20%;
+  animation-delay: 0s;
+}
+
+.dna-strand:nth-child(2) {
+  left: 80%;
+  animation-delay: 7.5s;
+}
+
+.dna-strand:nth-child(3) {
+  left: 50%;
+  animation-delay: 3.75s;
+  opacity: 0.5;
+}
+
+@keyframes dnaRotate {
+  0% {
+    transform: translateX(0) scaleY(1);
+    opacity: 0.1;
+  }
+  25% {
+    transform: translateX(30px) scaleY(1.1);
+    opacity: 0.15;
+  }
+  50% {
+    transform: translateX(0) scaleY(0.9);
+    opacity: 0.2;
+  }
+  75% {
+    transform: translateX(-30px) scaleY(1.05);
+    opacity: 0.15;
+  }
+  100% {
+    transform: translateX(0) scaleY(1);
+    opacity: 0.1;
+  }
+}
+
+/* Floating Particles System */
+.particles-container {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: -3;
+  overflow: hidden;
+}
+
+.particle {
+  position: absolute;
+  width: 3px;
+  height: 3px;
+  background: radial-gradient(circle, rgba(0, 212, 255, 0.8) 0%, transparent 70%);
+  border-radius: 50%;
+  animation: particleFloat 25s linear infinite;
+}
+
+.particle:nth-child(1) { left: 10%; animation-delay: 0s; animation-duration: 20s; }
+.particle:nth-child(2) { left: 20%; animation-delay: 2s; animation-duration: 25s; }
+.particle:nth-child(3) { left: 30%; animation-delay: 4s; animation-duration: 30s; }
+.particle:nth-child(4) { left: 40%; animation-delay: 6s; animation-duration: 22s; }
+.particle:nth-child(5) { left: 50%; animation-delay: 8s; animation-duration: 28s; }
+.particle:nth-child(6) { left: 60%; animation-delay: 10s; animation-duration: 24s; }
+.particle:nth-child(7) { left: 70%; animation-delay: 12s; animation-duration: 26s; }
+.particle:nth-child(8) { left: 80%; animation-delay: 14s; animation-duration: 23s; }
+.particle:nth-child(9) { left: 90%; animation-delay: 16s; animation-duration: 27s; }
+.particle:nth-child(10) { left: 15%; animation-delay: 18s; animation-duration: 29s; }
+
+@keyframes particleFloat {
+  0% {
+    transform: translateY(100vh) translateX(0) scale(0);
+    opacity: 0;
+  }
+  10% {
+    opacity: 1;
+    transform: translateY(90vh) translateX(10px) scale(1);
+  }
+  50% {
+    opacity: 0.8;
+    transform: translateY(50vh) translateX(-20px) scale(1.2);
+  }
+  90% {
+    opacity: 0.3;
+    transform: translateY(10vh) translateX(15px) scale(0.8);
+  }
+  100% {
+    transform: translateY(-10vh) translateX(0) scale(0);
+    opacity: 0;
+  }
+}
+
+/* Medical Data Visualization Patterns */
+.data-visualization {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: -6;
+  overflow: hidden;
+}
+
+.data-line {
+  position: absolute;
+  height: 2px;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(0, 212, 255, 0.3) 20%,
+    rgba(0, 255, 204, 0.4) 50%,
+    rgba(0, 212, 255, 0.3) 80%,
+    transparent 100%
+  );
+  animation: dataFlow 8s linear infinite;
+}
+
+.data-line:nth-child(1) {
+  top: 20%;
+  width: 300px;
+  left: -300px;
+  animation-delay: 0s;
+}
+
+.data-line:nth-child(2) {
+  top: 40%;
+  width: 250px;
+  left: -250px;
+  animation-delay: 2s;
+}
+
+.data-line:nth-child(3) {
+  top: 60%;
+  width: 350px;
+  left: -350px;
+  animation-delay: 4s;
+}
+
+.data-line:nth-child(4) {
+  top: 80%;
+  width: 200px;
+  left: -200px;
+  animation-delay: 6s;
+}
+
+@keyframes dataFlow {
+  0% {
+    left: -100%;
+    opacity: 0;
+  }
+  10% {
+    opacity: 1;
+  }
+  90% {
+    opacity: 1;
+  }
+  100% {
+    left: 100%;
+    opacity: 0;
+  }
+}
+
+/* Glass Morphism Enhancement Animations */
+@keyframes glassBreathing {
+  0%, 100% {
+    backdrop-filter: blur(25px);
+    box-shadow: var(--shadow-glass);
+  }
+  50% {
+    backdrop-filter: blur(30px);
+    box-shadow: var(--shadow-glass), 0 0 30px rgba(0, 212, 255, 0.1);
+  }
+}
+
+@keyframes glassShimmer {
+  0%, 100% {
+    transform: translateX(-100%) rotate(45deg);
+    opacity: 0;
+  }
+  50% {
+    transform: translateX(100%) rotate(45deg);
+    opacity: 1;
+  }
+}
+
+/* Medical EKG/Heartbeat Line Animation */
+.ekg-line {
+  position: fixed;
+  bottom: 10%;
+  left: 0;
+  width: 100%;
+  height: 2px;
+  pointer-events: none;
+  z-index: -7;
+  overflow: hidden;
+}
+
+.ekg-line::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    transparent 45%,
+    rgba(0, 212, 255, 0.6) 47%,
+    rgba(0, 212, 255, 0.8) 48%,
+    rgba(0, 255, 204, 1) 49%,
+    rgba(0, 212, 255, 0.8) 50%,
+    rgba(0, 212, 255, 0.6) 51%,
+    transparent 53%,
+    transparent 100%
+  );
+  animation: ekgPulse 4s linear infinite;
+}
+
+@keyframes ekgPulse {
+  0% {
+    left: -100%;
+  }
+  100% {
+    left: 100%;
+  }
+}
+
+/* Medical Digital Twin Scanning Line Animation */
+.digital-twin-scanner {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: -8;
+  overflow: hidden;
+}
+
+.scanning-line {
+  position: absolute;
+  width: 2px;
+  height: 100%;
+  background: linear-gradient(
+    to bottom,
+    transparent 0%,
+    rgba(0, 212, 255, 0.3) 20%,
+    rgba(0, 255, 204, 0.6) 50%,
+    rgba(0, 212, 255, 0.3) 80%,
+    transparent 100%
+  );
+  animation: scanningMotion 12s linear infinite;
+  filter: drop-shadow(0 0 10px rgba(0, 212, 255, 0.5));
+}
+
+.scanning-line:nth-child(1) {
+  animation-delay: 0s;
+}
+
+.scanning-line:nth-child(2) {
+  animation-delay: 4s;
+}
+
+.scanning-line:nth-child(3) {
+  animation-delay: 8s;
+}
+
+@keyframes scanningMotion {
+  0% {
+    left: -10px;
+    opacity: 0;
+  }
+  10% {
+    opacity: 1;
+  }
+  90% {
+    opacity: 1;
+  }
+  100% {
+    left: calc(100% + 10px);
+    opacity: 0;
+  }
+}
+
+/* Bidirectional Data Flow Animation */
+.data-sync-container {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: -9;
+  overflow: hidden;
+}
+
+.data-sync-particle {
+  position: absolute;
+  width: 4px;
+  height: 4px;
+  background: radial-gradient(circle, rgba(0, 212, 255, 0.8) 0%, transparent 70%);
+  border-radius: 50%;
+  animation: dataSyncFlow 15s linear infinite;
+}
+
+.data-sync-particle:nth-child(odd) {
+  animation-name: dataSyncFlowReverse;
+}
+
+.data-sync-particle:nth-child(1) { top: 15%; animation-delay: 0s; }
+.data-sync-particle:nth-child(2) { top: 25%; animation-delay: 2s; }
+.data-sync-particle:nth-child(3) { top: 35%; animation-delay: 4s; }
+.data-sync-particle:nth-child(4) { top: 45%; animation-delay: 6s; }
+.data-sync-particle:nth-child(5) { top: 55%; animation-delay: 8s; }
+.data-sync-particle:nth-child(6) { top: 65%; animation-delay: 10s; }
+.data-sync-particle:nth-child(7) { top: 75%; animation-delay: 12s; }
+.data-sync-particle:nth-child(8) { top: 85%; animation-delay: 14s; }
+
+@keyframes dataSyncFlow {
+  0% {
+    left: -10px;
+    opacity: 0;
+    transform: scale(0.5);
+  }
+  10% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.8;
+    transform: scale(1.2);
+  }
+  90% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  100% {
+    left: calc(100% + 10px);
+    opacity: 0;
+    transform: scale(0.5);
+  }
+}
+
+@keyframes dataSyncFlowReverse {
+  0% {
+    right: -10px;
+    opacity: 0;
+    transform: scale(0.5);
+  }
+  10% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.8;
+    transform: scale(1.2);
+  }
+  90% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  100% {
+    right: calc(100% + 10px);
+    opacity: 0;
+    transform: scale(0.5);
+  }
+}
+
+/* Synchronized Medical Data Processing Pulses */
+.medical-pulse-network {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: -10;
+  overflow: hidden;
+}
+
+.pulse-node {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  background: radial-gradient(circle, rgba(0, 212, 255, 0.8) 0%, rgba(0, 212, 255, 0.2) 70%, transparent 100%);
+  border-radius: 50%;
+  animation: medicalPulseSync 3s ease-in-out infinite;
+}
+
+.pulse-node:nth-child(1) { top: 20%; left: 20%; animation-delay: 0s; }
+.pulse-node:nth-child(2) { top: 20%; right: 20%; animation-delay: 0.5s; }
+.pulse-node:nth-child(3) { bottom: 20%; left: 20%; animation-delay: 1s; }
+.pulse-node:nth-child(4) { bottom: 20%; right: 20%; animation-delay: 1.5s; }
+.pulse-node:nth-child(5) { top: 50%; left: 50%; animation-delay: 2s; }
+
+.pulse-connection {
+  position: absolute;
+  height: 1px;
+  background: linear-gradient(90deg, transparent 0%, rgba(0, 212, 255, 0.3) 50%, transparent 100%);
+  animation: connectionPulse 3s ease-in-out infinite;
+}
+
+.pulse-connection:nth-child(6) {
+  top: 20%;
+  left: 20%;
+  width: 60%;
+  animation-delay: 0.25s;
+}
+
+.pulse-connection:nth-child(7) {
+  bottom: 20%;
+  left: 20%;
+  width: 60%;
+  animation-delay: 0.75s;
+}
+
+.pulse-connection:nth-child(8) {
+  top: 20%;
+  left: 20%;
+  width: 1px;
+  height: 60%;
+  background: linear-gradient(to bottom, transparent 0%, rgba(0, 212, 255, 0.3) 50%, transparent 100%);
+  animation-delay: 1.25s;
+}
+
+.pulse-connection:nth-child(9) {
+  top: 20%;
+  right: 20%;
+  width: 1px;
+  height: 60%;
+  background: linear-gradient(to bottom, transparent 0%, rgba(0, 212, 255, 0.3) 50%, transparent 100%);
+  animation-delay: 1.75s;
+}
+
+@keyframes medicalPulseSync {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 0.6;
+    box-shadow: 0 0 0 0 rgba(0, 212, 255, 0.4);
+  }
+  50% {
+    transform: scale(1.5);
+    opacity: 1;
+    box-shadow: 0 0 0 20px rgba(0, 212, 255, 0);
+  }
+}
+
+@keyframes connectionPulse {
+  0%, 100% {
+    opacity: 0.2;
+    transform: scaleX(1);
+  }
+  50% {
+    opacity: 0.8;
+    transform: scaleX(1.1);
   }
 }
 
@@ -382,7 +1033,7 @@ body {
   box-shadow: var(--shadow-glass);
   border: 2px solid rgba(255, 255, 255, 0.2);
   transition: var(--transition-spring);
-  animation: sectionFloat 1s ease-out;
+  animation: sectionFloat 1s ease-out, glassBreathing 6s ease-in-out infinite;
   position: relative;
   overflow: hidden;
 }
@@ -396,9 +1047,54 @@ body {
   bottom: 0;
   background:
     radial-gradient(circle at 30% 20%, rgba(0, 212, 170, 0.1) 0%, transparent 50%),
-    radial-gradient(circle at 70% 80%, rgba(79, 70, 229, 0.1) 0%, transparent 50%);
-  animation: sectionGlow 8s ease-in-out infinite;
+    radial-gradient(circle at 70% 80%, rgba(79, 70, 229, 0.1) 0%, transparent 50%),
+    linear-gradient(45deg, rgba(0, 212, 255, 0.05) 0%, transparent 50%, rgba(0, 255, 204, 0.05) 100%);
+  animation: sectionGlow 8s ease-in-out infinite, glassShimmer 10s ease-in-out infinite, digitalTwinProcessing 6s ease-in-out infinite;
   z-index: -1;
+}
+
+/* Digital Twin Processing Animation for Upload Section */
+.upload-section::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background:
+    linear-gradient(90deg, transparent 0%, rgba(0, 212, 255, 0.1) 2%, transparent 4%),
+    linear-gradient(0deg, transparent 0%, rgba(0, 255, 204, 0.1) 2%, transparent 4%);
+  background-size: 50px 50px, 50px 50px;
+  animation: digitalGridFlow 15s linear infinite;
+  z-index: -1;
+  pointer-events: none;
+}
+
+@keyframes digitalTwinProcessing {
+  0%, 100% {
+    filter: brightness(1) hue-rotate(0deg);
+  }
+  33% {
+    filter: brightness(1.1) hue-rotate(10deg);
+  }
+  66% {
+    filter: brightness(0.9) hue-rotate(-10deg);
+  }
+}
+
+@keyframes digitalGridFlow {
+  0% {
+    background-position: 0 0, 0 0;
+    opacity: 0.3;
+  }
+  50% {
+    background-position: 50px 25px, 25px 50px;
+    opacity: 0.6;
+  }
+  100% {
+    background-position: 100px 50px, 50px 100px;
+    opacity: 0.3;
+  }
 }
 
 @keyframes sectionFloat {
@@ -467,6 +1163,31 @@ body {
   margin-bottom: 2.5rem;
   text-align: left;
   animation: slideInLeft 0.8s ease-out 0.3s both;
+  position: relative;
+  overflow: hidden;
+}
+
+.processing-mode::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent 0%, rgba(0, 212, 255, 0.1) 50%, transparent 100%);
+  animation: processingSync 8s ease-in-out infinite;
+  z-index: -1;
+}
+
+@keyframes processingSync {
+  0%, 100% {
+    left: -100%;
+    opacity: 0;
+  }
+  50% {
+    left: 100%;
+    opacity: 1;
+  }
 }
 
 @keyframes slideInLeft {
@@ -581,9 +1302,25 @@ body {
     rgba(0, 212, 170, 0.2),
     rgba(79, 70, 229, 0.2),
     rgba(6, 182, 212, 0.2),
+    rgba(0, 212, 255, 0.3),
     transparent);
   transition: left 0.8s ease;
+  animation: digitalScanLine 4s linear infinite;
   z-index: 1;
+}
+
+@keyframes digitalScanLine {
+  0% {
+    left: -100%;
+    opacity: 0.3;
+  }
+  50% {
+    opacity: 0.8;
+  }
+  100% {
+    left: 100%;
+    opacity: 0.3;
+  }
 }
 
 .file-upload-area::after {
@@ -594,9 +1331,22 @@ body {
   width: 200%;
   height: 200%;
   background: conic-gradient(from 0deg, transparent, rgba(0, 212, 170, 0.1), transparent);
-  animation: uploadRotate 20s linear infinite;
+  animation: uploadRotate 20s linear infinite, digitalTwinTransform 6s ease-in-out infinite;
   transform: translate(-50%, -50%);
   z-index: 0;
+}
+
+/* Digital Twin Transformation Effects for Upload Area */
+@keyframes digitalTwinTransform {
+  0%, 100% {
+    filter: hue-rotate(0deg) brightness(1);
+  }
+  33% {
+    filter: hue-rotate(10deg) brightness(1.1);
+  }
+  66% {
+    filter: hue-rotate(-10deg) brightness(0.9);
+  }
 }
 
 @keyframes uploadRotate {
@@ -1103,15 +1853,6 @@ body {
   min-width: 50px;
   text-align: right;
   font-weight: 600;
-}
-
-.enhancement-note {
-  background: #fff3cd;
-  border: 1px solid #ffeaa7;
-  border-radius: 6px;
-  padding: 1rem;
-  margin-top: 1rem;
-  color: #856404;
 }
 
 .result-error {
@@ -2436,11 +3177,32 @@ body {
   cursor: pointer;
   transition: var(--transition-smooth);
   backdrop-filter: blur(10px);
+  position: relative;
+  overflow: hidden;
+  animation: themeButtonFloat 4s ease-in-out infinite;
+}
+
+.theme-button::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: radial-gradient(circle, rgba(0, 212, 255, 0.2) 0%, transparent 70%);
+  opacity: 0;
+  transition: opacity 0.3s ease;
 }
 
 .theme-button:hover {
   background: rgba(0, 212, 255, 0.2);
-  transform: scale(1.1);
+  transform: scale(1.1) rotate(180deg);
+  box-shadow: 0 0 20px rgba(0, 212, 255, 0.5);
+}
+
+.theme-button:hover::before {
+  opacity: 1;
+  animation: ripple 0.6s ease-out;
 }
 
 
@@ -2453,9 +3215,64 @@ body {
 .dark-theme body {
   background: var(--gradient-hero);
   background-image:
-    radial-gradient(circle at 20% 20%, rgba(0, 212, 255, 0.1) 0%, transparent 50%),
-    radial-gradient(circle at 80% 80%, rgba(0, 255, 204, 0.1) 0%, transparent 50%),
-    radial-gradient(circle at 40% 60%, rgba(0, 102, 255, 0.05) 0%, transparent 50%);
+    radial-gradient(circle at 20% 20%, rgba(0, 212, 255, 0.15) 0%, transparent 50%),
+    radial-gradient(circle at 80% 80%, rgba(0, 255, 204, 0.12) 0%, transparent 50%),
+    radial-gradient(circle at 40% 60%, rgba(0, 102, 255, 0.08) 0%, transparent 50%);
+  animation: gradientShift 15s ease infinite, backgroundPulse 8s ease-in-out infinite;
+}
+
+/* Enhanced Dark Theme Animations */
+.dark-theme .medical-icon {
+  opacity: 0.2;
+  filter: drop-shadow(0 0 20px rgba(0, 212, 255, 0.6));
+}
+
+.dark-theme .particle {
+  background: radial-gradient(circle, rgba(0, 255, 204, 0.9) 0%, transparent 70%);
+}
+
+.dark-theme .ekg-line::before {
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    transparent 45%,
+    rgba(0, 255, 204, 0.8) 47%,
+    rgba(0, 255, 204, 1) 48%,
+    rgba(0, 212, 255, 1) 49%,
+    rgba(0, 255, 204, 1) 50%,
+    rgba(0, 255, 204, 0.8) 51%,
+    transparent 53%,
+    transparent 100%
+  );
+}
+
+/* Enhanced Dark Theme Digital Twin Effects */
+.dark-theme .scanning-line {
+  background: linear-gradient(
+    to bottom,
+    transparent 0%,
+    rgba(0, 255, 204, 0.4) 20%,
+    rgba(0, 212, 255, 0.7) 50%,
+    rgba(0, 255, 204, 0.4) 80%,
+    transparent 100%
+  );
+  filter: drop-shadow(0 0 15px rgba(0, 255, 204, 0.6));
+}
+
+.dark-theme .data-sync-particle {
+  background: radial-gradient(circle, rgba(0, 255, 204, 0.9) 0%, transparent 70%);
+}
+
+.dark-theme .pulse-node {
+  background: radial-gradient(circle, rgba(0, 255, 204, 0.9) 0%, rgba(0, 255, 204, 0.3) 70%, transparent 100%);
+}
+
+.dark-theme .pulse-connection {
+  background: linear-gradient(90deg, transparent 0%, rgba(0, 255, 204, 0.4) 50%, transparent 100%);
+}
+
+.dark-theme .id-card::before {
+  background: linear-gradient(90deg, transparent 0%, rgba(0, 255, 204, 0.3) 50%, transparent 100%);
 }
 
 
@@ -2476,6 +3293,23 @@ body {
   max-width: 500px;
   width: 100%;
   box-shadow: var(--shadow-medium);
+  position: relative;
+  overflow: hidden;
+  animation: glassBreathing 6s ease-in-out infinite;
+}
+
+.auth-container::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background:
+    linear-gradient(45deg, rgba(0, 212, 255, 0.05) 0%, transparent 50%, rgba(0, 255, 204, 0.05) 100%);
+  animation: glassShimmer 8s ease-in-out infinite;
+  pointer-events: none;
+  z-index: -1;
 }
 
 .app-branding {
@@ -2577,11 +3411,29 @@ body {
   cursor: pointer;
   transition: var(--transition-smooth);
   box-shadow: var(--shadow-soft);
+  position: relative;
+  overflow: hidden;
+}
+
+.auth-submit-btn::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+  transition: left 0.5s ease;
 }
 
 .auth-submit-btn:hover {
   transform: translateY(-2px);
   box-shadow: var(--shadow-medium);
+  animation: buttonPulse 2s ease-in-out infinite;
+}
+
+.auth-submit-btn:hover::before {
+  left: 100%;
 }
 
 .patient-id-page {
@@ -2602,6 +3454,23 @@ body {
   width: 100%;
   text-align: center;
   box-shadow: var(--shadow-medium);
+  position: relative;
+  overflow: hidden;
+  animation: glassBreathing 6s ease-in-out infinite;
+}
+
+.patient-id-container::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background:
+    linear-gradient(45deg, rgba(0, 212, 255, 0.05) 0%, transparent 50%, rgba(0, 255, 204, 0.05) 100%);
+  animation: glassShimmer 8s ease-in-out infinite;
+  pointer-events: none;
+  z-index: -1;
 }
 
 .patient-id-container h1 {
@@ -2632,6 +3501,41 @@ body {
   padding: 2rem;
   backdrop-filter: blur(15px);
   box-shadow: var(--shadow-soft);
+  position: relative;
+  overflow: hidden;
+  animation: digitalTwinSync 4s ease-in-out infinite;
+}
+
+.id-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent 0%, rgba(0, 212, 255, 0.2) 50%, transparent 100%);
+  animation: idCardScan 6s linear infinite;
+  z-index: -1;
+}
+
+@keyframes digitalTwinSync {
+  0%, 100% {
+    border-color: rgba(0, 212, 255, 0.3);
+    box-shadow: var(--shadow-soft);
+  }
+  50% {
+    border-color: rgba(0, 255, 204, 0.5);
+    box-shadow: var(--shadow-soft), 0 0 20px rgba(0, 212, 255, 0.3);
+  }
+}
+
+@keyframes idCardScan {
+  0% {
+    left: -100%;
+  }
+  100% {
+    left: 100%;
+  }
 }
 
 .id-number {
@@ -2671,11 +3575,29 @@ body {
   background: var(--gradient-primary);
   color: white;
   box-shadow: var(--shadow-soft);
+  position: relative;
+  overflow: hidden;
+}
+
+.proceed-btn::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+  transition: left 0.5s ease;
 }
 
 .proceed-btn:hover {
   transform: translateY(-2px);
   box-shadow: var(--shadow-medium);
+  animation: buttonPulse 2s ease-in-out infinite;
+}
+
+.proceed-btn:hover::before {
+  left: 100%;
 }
 
 .logout-btn {
@@ -2704,6 +3626,37 @@ body {
   justify-content: center;
   gap: 1rem;
   z-index: 100;
+  animation: navigationPulse 8s ease-in-out infinite;
+}
+
+.bottom-navigation::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent 0%, rgba(0, 212, 255, 0.1) 50%, transparent 100%);
+  animation: navigationFlow 10s linear infinite;
+  pointer-events: none;
+}
+
+@keyframes navigationPulse {
+  0%, 100% {
+    border-top-color: rgba(0, 212, 255, 0.2);
+  }
+  50% {
+    border-top-color: rgba(0, 255, 204, 0.4);
+  }
+}
+
+@keyframes navigationFlow {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
 }
 
 .nav-btn {
@@ -2730,13 +3683,41 @@ body {
 
 .results-page {
   min-height: 100vh;
-  padding-bottom: 100px; 
+  padding-bottom: 100px;
+  position: relative;
+  overflow: hidden;
+}
+
+.results-page::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background:
+    linear-gradient(45deg, rgba(0, 212, 255, 0.03) 0%, transparent 50%, rgba(0, 255, 204, 0.03) 100%);
+  animation: resultsPageGlow 12s ease-in-out infinite;
+  pointer-events: none;
+  z-index: -1;
 }
 
 .results-page .main-content {
   padding: 2rem;
   max-width: 1200px;
   margin: 0 auto;
+  position: relative;
+}
+
+@keyframes resultsPageGlow {
+  0%, 100% {
+    opacity: 0.5;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.02);
+  }
 }
 
 
